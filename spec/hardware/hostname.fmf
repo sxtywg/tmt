@@ -1,12 +1,5 @@
-summary: |
-    Select a guest with a specific hostname.
-
-description: |
-    .. code-block::
-
-       # String, the hostname requested.
-       hostname: foo.bar.com
-
+summary:
+    Select specific guest by its hostname
 example:
   - |
     # Choose machine with given hostname
@@ -19,7 +12,5 @@ example:
   - |
     # Hostname not matching a regular expression
     hostname: "!~ kvm-01.*"
-
 link:
   - implemented-by: /tmt/steps/provision/artemis.py
-  - implemented-by: /tmt/steps/provision/mrack.py

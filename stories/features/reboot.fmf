@@ -39,8 +39,6 @@ description: |
     __ https://restraint.readthedocs.io/en/latest/commands.html#rstrnt-reboot
 
 example: |
-    # syntax: shell
-
     if [ "$TMT_REBOOT_COUNT" -eq 0 ]; then
         rlRun "echo 'Before the reboot'"
         rlRun "tmt-reboot" 0 "Reboot the machine"

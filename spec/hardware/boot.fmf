@@ -1,23 +1,14 @@
-summary: |
-    Select or provision a guest with requested boot properties.
-
-description: |
-    .. code-block::
-
-       boot:
-         # String, a boot method the guest must boot with.
-         method: "bios"|"uefi"
-
+summary:
+    Features related to machine boot
 example:
   - |
-    # Require a guest with a UEFI boot method.
+    # Guest with BIOS
     boot:
-        method: uefi
+        method: bios
 
   - |
-    # Require a guest without a legacy BIOS.
+    # Guest with UEFI
     boot:
-        method: "!= bios"
-
+        method: uefi
 link:
   - implemented-by: /tmt/steps/provision/artemis.py

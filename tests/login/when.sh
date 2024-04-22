@@ -11,15 +11,15 @@ rlJournalStart
     rlPhaseEnd
 
     rlPhaseStartTest "Skipped"
-        rlRun -s "$tmt true login -w fail -c true"
-        rlAssertGrep "Skipping interactive" $rlRun_LOG
-        rlAssertNotGrep "Starting interactive" $rlRun_LOG
+        rlRun "$tmt true login -w fail -c true 2>&1 >/dev/null | tee output"
+        rlAssertGrep "Skipping interactive" "output"
+        rlAssertNotGrep "Starting interactive" "output"
     rlPhaseEnd
 
     rlPhaseStartTest "Enabled"
-        rlRun -s "$tmt false login -w fail -c true" 1
-        rlAssertNotGrep "Skipping interactive" $rlRun_LOG
-        rlAssertGrep "Starting interactive" $rlRun_LOG
+        rlRun "$tmt false login -w fail -c true 2>&1 >/dev/null | tee output" 1
+        rlAssertNotGrep "Skipping interactive" "output"
+        rlAssertGrep "Starting interactive" "output"
     rlPhaseEnd
 
     rlPhaseStartCleanup

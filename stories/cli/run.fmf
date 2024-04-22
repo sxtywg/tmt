@@ -37,7 +37,7 @@ story: 'As a user I want to execute tests easily'
             For example use ``execute -h beakerlib`` to execute
             tests using the beakerlib method.
         example: |
-            /default/plan:
+            /plans/default:
                 summary:
                     Default plan when fmf metadata found
                 discover:
@@ -45,7 +45,7 @@ story: 'As a user I want to execute tests easily'
                 execute:
                     how: shell
 
-            /default/plan:
+            /plans/default:
                 summary:
                     Default plan when no fmf metadata around
                 discover:
@@ -89,6 +89,20 @@ story: 'As a user I want to execute tests easily'
         story: 'Run all test steps, customize some'
         example:
             - tmt run --all provision --how=container
+
+/interactive:
+    story: 'Provide way similar to git rebase --interactive'
+    description:
+        Provide users with list of steps and let them edit them.
+        Allow adding commands between, or at least interactive "pause".
+        When user would be finished with single step, just continue recipe.
+        Do not force users to remember all steps when working with them.
+        Make it possible to repeat single step or abort current run.
+        Allow repeating some steps just by repeating lines with task.
+    example:
+        - tmt run --all --interactive
+        - tmt run --continue
+        - tmt run --abort
 
 /shortcuts:
     story: 'Provide shortcuts for common scenarios'
@@ -171,13 +185,26 @@ story: 'As a user I want to execute tests easily'
       - implemented-by: /tmt/steps/execute
       - implemented-by: /tmt/steps/prepare/install.py
 
+/restraint:
+    story:
+        As a tester I want the option to execute tests using the
+        Restraint harness.
+    description:
+        Restraint is the default harness in beaker for RHEL8 and
+        beyond. In order to provide compatibility with beaker
+        style tests, I would like a way to invoke ``tmt`` using
+        the Restaint harness. This would enable Restraint tests to
+        be invoked by ``tmt`` without modification. Some common
+        commands include ``rstrnt-reboot``, ``rstrnt-abort``, and
+        ``rstrnt-report-result``.
+    example:
+        - tmt run --all execute --how restraint
+
 /last:
     story: 'As a user I want to rerun tests easily'
-    description: |
+    description: >
         Execute previous run without the need to specify the
-        previous run id. The command is a shortcut for:
-
-        .. code-block:: shell
+        previous run id. The command is a shortcut for::
 
             tmt run --id PREVIOUS_RUN
 

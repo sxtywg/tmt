@@ -1,33 +1,35 @@
 #!/bin/bash
 . /usr/share/beakerlib/beakerlib.sh || exit 1
 
+PROVISION_METHODS=${PROVISION_METHODS:-container}
+
 rlJournalStart
     rlPhaseStartSetup
-        rlRun "PROVISION_HOW=${PROVISION_HOW:-container}"
+        rlRun "tmp=\$(mktemp -d)" 0 "Create tmp directory"
+        rlRun "chmod go+rx $tmp" 0 "Make tmp directory accessible by others"
         rlRun "run=\$(mktemp -d)" 0 "Create run directory"
-        rlRun "pushd data"
+        rlRun "pushd $tmp"
+        rlRun "set -o pipefail"
+        rlRun "tmt init"
+        STEPS="--execute 'script: id'"
+        rlRun "tmt plan create test --template mini $STEPS"
     rlPhaseEnd
 
-    rlPhaseStartTest "$PROVISION_HOW, default user root"
-        rlRun -s "tmt run -i $run -a provision --how $PROVISION_HOW report -vvv"
-        rlAssertGrep "uid=0(root) gid=0(root) groups=0(root)" $rlRun_LOG
-    rlPhaseEnd
+    if [[ "$PROVISION_METHODS" =~ container ]]; then
+        rlPhaseStartTest "Container, default user root"
+            rlRun -s "tmt run -i $run -a provision -h container report -vvv"
+            rlAssertGrep "uid=0(root) gid=0(root) groups=0(root)" $rlRun_LOG
+        rlPhaseEnd
 
-    rlPhaseStartTest "$PROVISION_HOW, set specific user"
-        if [ "$PROVISION_HOW" = "virtual" ]; then
-            user="fedora"
-            ids="1000"
-        else
-            user="nobody"
-            ids="65534"
-        fi
-
-        rlRun -s "tmt run --scratch -i $run -a provision --how $PROVISION_HOW --user $user report -vvv"
-        rlAssertGrep "uid=$ids($user) gid=$ids($user) groups=$ids($user)" $rlRun_LOG
-    rlPhaseEnd
+        rlPhaseStartTest "Container, set specific user"
+            rlRun -s "tmt run --scratch -i $run -a provision -h container -u nobody report -vvv"
+            rlAssertGrep "uid=65534(nobody) gid=65534(nobody) groups=65534(nobody)" $rlRun_LOG
+        rlPhaseEnd
+    fi
 
     rlPhaseStartCleanup
         rlRun "popd"
-        rlRun "rm -rf $run" 0 "Remove run directory"
+        rlRun "rm -r $tmp" 0 "Remove tmp directory"
+        rlRun "rm -r $run" 0 "Remove run directory"
     rlPhaseEnd
 rlJournalEnd

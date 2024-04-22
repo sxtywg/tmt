@@ -1,5 +1,5 @@
 framework: shell
-duration: 5s
+duration: 1s
 require: []
 test: "true"
 

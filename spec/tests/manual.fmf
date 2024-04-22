@@ -19,9 +19,7 @@ description: |
     __ https://spec.commonmark.org/0.29
 
     This is a minimal example of a manual test document containing
-    a single test with one test step and one expected result:
-
-    .. code-block:: markdown
+    a single test with one test step and one expected result::
 
         # Test
 
@@ -77,4 +75,4 @@ example: |
   test: manual.md
 
 link:
-  - implemented-by: /tmt/base.py
+  - implemented-by: /tmp/base.py

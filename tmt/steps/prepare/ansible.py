@@ -1,6 +1,6 @@
 import dataclasses
 import tempfile
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import requests
 
@@ -15,21 +15,18 @@ from tmt.utils import Path, PrepareError, field, retry_session
 
 
 class _RawAnsibleStepData(tmt.steps._RawStepData, total=False):
-    playbook: Union[str, list[str]]
-    playbooks: list[str]
+    playbook: Union[str, List[str]]
+    playbooks: List[str]
 
 
 @dataclasses.dataclass
 class PrepareAnsibleData(tmt.steps.prepare.PrepareStepData):
-    playbook: list[str] = field(
+    playbook: List[str] = field(
         default_factory=list,
         option=('-p', '--playbook'),
         multiple=True,
-        metavar='PATH|URL',
-        help="""
-             Path or URL of an ansible playbook to run. The playbook path must
-             be relative to the metadata tree root.
-             """,
+        metavar='PLAYBOOK',
+        help='Path or URL of an ansible playbook to run.',
         normalize=tmt.utils.normalize_string_list
         )
 
@@ -37,7 +34,7 @@ class PrepareAnsibleData(tmt.steps.prepare.PrepareStepData):
         default=None,
         option='--extra-args',
         metavar='EXTRA-ARGS',
-        help='Optional arguments for ``ansible-playbook``.'
+        help='Optional arguments for ansible-playbook.'
         )
 
     # ignore[override]: method violates a liskov substitution principle,
@@ -60,22 +57,17 @@ class PrepareAnsibleData(tmt.steps.prepare.PrepareStepData):
 
 
 @tmt.steps.provides_method('ansible')
-class PrepareAnsible(tmt.steps.prepare.PreparePlugin[PrepareAnsibleData]):
+class PrepareAnsible(tmt.steps.prepare.PreparePlugin):
     """
-    Prepare guest using Ansible.
+    Prepare guest using ansible
 
-    Run a single playbook on the guest:
-
-    .. code-block:: yaml
+    Single playbook config:
 
         prepare:
             how: ansible
             playbook: ansible/packages.yml
 
-    Run multiple playbook in one phase, with extra arguments for
-    ``ansible-playbook``:
-
-    .. code-block:: yaml
+    Multiple playbooks config:
 
         prepare:
             how: ansible
@@ -88,8 +80,6 @@ class PrepareAnsible(tmt.steps.prepare.PreparePlugin[PrepareAnsibleData]):
     Remote playbooks can be referenced as well as local ones, and both
     kinds can be intermixed:
 
-    .. code-block:: yaml
-
         prepare:
             how: ansible
             playbook:
@@ -97,9 +87,10 @@ class PrepareAnsible(tmt.steps.prepare.PreparePlugin[PrepareAnsibleData]):
               - https://foo.bar/two.yml
               - playbook/three.yml
 
-    The playbook path must be relative to the metadata tree root.
-
     The playbook path should be relative to the metadata tree root.
+    Use 'order' attribute to select in which order preparation should
+    happen if there are multiple configs. Default order is '50'.
+    Default order of required packages installation is '70'.
     """
 
     _data_class = PrepareAnsibleData
@@ -108,19 +99,20 @@ class PrepareAnsible(tmt.steps.prepare.PreparePlugin[PrepareAnsibleData]):
             self,
             *,
             guest: 'Guest',
-            environment: Optional[tmt.utils.Environment] = None,
+            environment: Optional[tmt.utils.EnvironmentType] = None,
             logger: tmt.log.Logger) -> None:
         """ Prepare the guests """
         super().go(guest=guest, environment=environment, logger=logger)
 
         # Apply each playbook on the guest
-        for playbook in self.data.playbook:
+        for playbook in self.get('playbook'):
             logger.info('playbook', playbook, 'green')
 
             lowercased_playbook = playbook.lower()
             playbook_path = Path(playbook)
 
-            if lowercased_playbook.startswith(('http://', 'https://')):
+            if lowercased_playbook.startswith(
+                    'http://') or lowercased_playbook.startswith('https://'):
                 assert self.step.plan.my_run is not None  # narrow type
                 assert self.step.plan.my_run.tree is not None  # narrow type
                 assert self.step.plan.my_run.tree.root is not None  # narrow type
@@ -149,6 +141,6 @@ class PrepareAnsible(tmt.steps.prepare.PreparePlugin[PrepareAnsibleData]):
 
                     playbook_path = Path(file.name).relative_to(root_path)
 
-                logger.info('playbook-path', playbook_path, 'green')
+                logger.info('playbook-path', str(playbook_path), 'green')
 
-            guest.ansible(playbook_path, extra_args=self.data.extra_args)
+            guest.ansible(playbook_path, self.get('extra-args'))

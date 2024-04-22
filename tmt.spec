@@ -1,722 +1,255 @@
-Name:           tmt
-Version:        1.32.2
-Release:        %autorelease
-Summary:        Test Management Tool
+Name: tmt
+Version: 1.22.0
+Release: 1%{?dist}
 
-License:        MIT
-URL:            https://github.com/teemtee/tmt
-Source0:        %{pypi_source tmt}
+Summary: Test Management Tool
+License: MIT
+BuildArch: noarch
 
-BuildArch:      noarch
-BuildRequires:  python3-devel
+# Build only on arches where libguestfs (needed by testcloud) is available
+%{?kernel_arches:ExclusiveArch: %{kernel_arches} noarch}
+%if 0%{?rhel} >= 9
+ExcludeArch: %{power64}
+%endif
 
-Requires:       git-core rsync sshpass
+URL: https://github.com/teemtee/tmt
+Source0: https://github.com/teemtee/tmt/releases/download/%{version}/tmt-%{version}.tar.gz
 
-Obsoletes:      python3-tmt < %{version}-%{release}
-Obsoletes:      tmt-report-html < %{version}-%{release}
-Obsoletes:      tmt-report-junit < %{version}-%{release}
-Obsoletes:      tmt-report-polarion < %{version}-%{release}
-Obsoletes:      tmt-report-reportportal < %{version}-%{release}
+%define workdir_root /var/tmp/tmt
 
-Recommends:     bash-completion
+# Hint for shebang fixer, otherwise uses /usr/bin/python3
+# which can be changed by user
+%if 0%{?rhel} == 8
+%global __python3 /usr/bin/python3.6
+%endif
 
-%py_provides    python3-tmt
+# Main tmt package requires the Python module
+Requires: python%{python3_pkgversion}-%{name} == %{version}-%{release}
+Requires: git-core rsync sshpass
 
 %description
 The tmt Python module and command line tool implement the test
 metadata specification (L1 and L2) and allows easy test execution.
+This package contains the command line tool.
 
-%pyproject_extras_subpkg -n tmt export-polarion
-%pyproject_extras_subpkg -n tmt report-junit
-%pyproject_extras_subpkg -n tmt report-polarion
+%?python_enable_dependency_generator
 
-%package -n     tmt+test-convert
-Summary:        Dependencies required for tmt test import and export
-Obsoletes:      tmt-test-convert < %{version}-%{release}
-Requires:       tmt == %{version}-%{release}
-Requires:       make
-Requires:       python3-bugzilla
-Requires:       python3-nitrate
-Requires:       python3-html2text
-Requires:       python3-markdown
 
-%description -n tmt+test-convert
-This is a metapackage bringing in extra dependencies for tmt.
-It contains no code, just makes sure the dependencies are installed.
+%package -n     python%{python3_pkgversion}-%{name}
+Summary:        Python library for the %{summary}
+BuildRequires: python%{python3_pkgversion}-devel
+BuildRequires: python%{python3_pkgversion}-docutils
+BuildRequires: python%{python3_pkgversion}-setuptools
+BuildRequires: python%{python3_pkgversion}-pytest
+BuildRequires: python%{python3_pkgversion}-click
+BuildRequires: python%{python3_pkgversion}-fmf >= 1.2.0
+BuildRequires: python%{python3_pkgversion}-requests
+BuildRequires: python%{python3_pkgversion}-testcloud >= 0.9.2
+BuildRequires: python%{python3_pkgversion}-markdown
+BuildRequires: python%{python3_pkgversion}-junit_xml
+BuildRequires: python%{python3_pkgversion}-ruamel-yaml
+BuildRequires: python%{python3_pkgversion}-jinja2
+%if 0%{?rhel} >= 9 || 0%{?fedora}
+BuildRequires: python%{python3_pkgversion}-mrack-beaker >= 1.12.1
+%endif
+# Only needed for rhel-8 (it has python3.6)
+%if 0%{?rhel} == 8
+BuildRequires: python%{python3_pkgversion}-typing-extensions
+BuildRequires: python%{python3_pkgversion}-dataclasses
+BuildRequires: python%{python3_pkgversion}-importlib-metadata
+%endif
+# Required for tests
+BuildRequires: rsync
+%{?python_provide:%python_provide python%{python3_pkgversion}-%{name}}
 
-%package -n     tmt+provision-container
-Summary:        Dependencies required for tmt container provisioner
-Obsoletes:      tmt-provision-container < %{version}-%{release}
-Obsoletes:      tmt-container < 0.17
-Requires:       tmt == %{version}-%{release}
-Requires:       podman
-Requires:       (ansible or ansible-collection-containers-podman)
+%description -n python%{python3_pkgversion}-%{name}
+The tmt Python module and command line tool implement the test
+metadata specification (L1 and L2) and allows easy test execution.
+This package contains the Python 3 module.
 
-%description -n tmt+provision-container
-This is a metapackage bringing in extra dependencies for tmt.
-It contains no code, just makes sure the dependencies are installed.
+%package provision-container
+Summary: Container provisioner for the Test Management Tool
+Obsoletes: tmt-container < 0.17
+Requires: tmt == %{version}-%{release}
+Requires: podman
+Requires: (ansible or ansible-collection-containers-podman)
 
-%package -n     tmt+provision-virtual
-Summary:        Dependencies required for tmt virtual machine provisioner
-Obsoletes:      tmt-provision-virtual < %{version}-%{release}
-Obsoletes:      tmt-testcloud < 0.17
-Requires:       tmt == %{version}-%{release}
-Requires:       python3-testcloud >= 0.9.10
-Requires:       libvirt-daemon-config-network
-Requires:       openssh-clients
-Requires:       (ansible or ansible-core)
+%description provision-container
+Dependencies required to run tests in a container environment.
+
+%package provision-virtual
+Summary: Virtual machine provisioner for the Test Management Tool
+Obsoletes: tmt-testcloud < 0.17
+Requires: tmt == %{version}-%{release}
+Requires: python%{python3_pkgversion}-testcloud >= 0.9.2
+Requires: libvirt-daemon-config-network
+Requires: openssh-clients
+Requires: (ansible or ansible-core)
 # Recommend qemu system emulators for supported arches
-Recommends:     qemu-kvm-core
 %if 0%{?fedora}
-Recommends:     qemu-system-aarch64-core
-Recommends:     qemu-system-ppc-core
-Recommends:     qemu-system-s390x-core
-Recommends:     qemu-system-x86-core
+Recommends: qemu-system-aarch64-core
+Recommends: qemu-system-ppc-core
+Recommends: qemu-system-s390x-core
+Recommends: qemu-system-x86-core
 %endif
 
-%description -n tmt+provision-virtual
-This is a metapackage bringing in extra dependencies for tmt.
-It contains no code, just makes sure the dependencies are installed.
+%if 0%{?rhel} >= 9 || 0%{?fedora}
+%package provision-beaker
+Summary: Beaker provisioner for the Test Management Tool
+Requires: tmt = %{version}-%{release}
+Requires: python3-mrack-beaker >= 1.12.1
+%endif
 
-%package -n     tmt+provision-beaker
-Summary:        Dependencies required for tmt beaker provisioner
-Provides:       tmt-provision-beaker == %{version}-%{release}
-Obsoletes:      tmt-provision-beaker < %{version}-%{release}
-Requires:       tmt == %{version}-%{release}
-Requires:       python3-mrack-beaker
+%if 0%{?rhel} >= 9 || 0%{?fedora}
+%description provision-beaker
+Dependencies required to run tests in a Beaker environment.
+%endif
 
-%description -n tmt+provision-beaker
-This is a metapackage bringing in extra dependencies for tmt.
-It contains no code, just makes sure the dependencies are installed.
+%description provision-virtual
+Dependencies required to run tests in a local virtual machine.
 
-# Replace with pyproject_extras_subpkg at some point
-%package -n     tmt+all
-Summary:        Extra dependencies for the Test Management Tool
-Provides:       tmt-all == %{version}-%{release}
-Obsoletes:      tmt-all < %{version}-%{release}
-Requires:       tmt+test-convert == %{version}-%{release}
-Requires:       tmt+export-polarion == %{version}-%{release}
-Requires:       tmt+provision-container == %{version}-%{release}
-Requires:       tmt+provision-virtual == %{version}-%{release}
-Requires:       tmt+provision-beaker == %{version}-%{release}
-Requires:       tmt+report-junit == %{version}-%{release}
-Requires:       tmt+report-polarion == %{version}-%{release}
+%package test-convert
+Summary: Test import and export dependencies
+Requires: tmt == %{version}-%{release}
+Requires: make python3-nitrate python3-html2text python3-markdown
+Requires: python3-bugzilla
 
-%description -n tmt+all
+%description test-convert
+Additional dependencies needed for test metadata import and export.
+
+%package report-html
+Summary: Report plugin with support for generating web pages
+Requires: tmt == %{version}-%{release}
+
+%description report-html
+Generate test results in the html format. Quickly review test
+output thanks to direct links to output logs.
+
+%package report-junit
+Summary: Report plugin with support for generating JUnit output file
+Requires: tmt == %{version}-%{release}
+Requires: python3-junit_xml
+
+%description report-junit
+Generate test results in the JUnit format.
+
+%package report-polarion
+Summary: Report plugin with support for generating Polarion test runs
+Requires: tmt-report-junit >= %{version}
+Requires: python3-pylero
+
+%description report-polarion
+Generate test results in xUnit format for exporting to Polarion.
+
+%package report-reportportal
+Summary: Report step plugin for ReportPortal
+Requires: tmt == %{version}-%{release}
+Requires: tmt-report-junit == %{version}
+
+%description report-reportportal
+Report test results to a ReportPortal instance.
+
+%package all
+Summary: Extra dependencies for the Test Management Tool
+Requires: tmt >= %{version}
+Requires: tmt-provision-container >= %{version}
+Requires: tmt-provision-virtual >= %{version}
+Requires: tmt-test-convert >= %{version}
+Requires: tmt-report-html >= %{version}
+Requires: tmt-report-junit >= %{version}
+Requires: tmt-report-polarion >= %{version}
+Requires: tmt-report-reportportal >= %{version}
+%if 0%{?rhel} >= 9 || 0%{?fedora}
+Requires: tmt-provision-beaker >= %{version}
+%endif
+
+%description all
 All extra dependencies of the Test Management Tool. Install this
 package to have all available plugins ready for testing.
 
-%prep
-%autosetup -p1 -n tmt-%{version}
 
-%generate_buildrequires
-%pyproject_buildrequires
+%prep
+%autosetup
+
 
 %build
-export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}
-%pyproject_wheel
+%py3_build
+
 
 %install
-%pyproject_install
-%pyproject_save_files tmt
+%py3_install
 
 mkdir -p %{buildroot}%{_mandir}/man1
-install -pm 644 tmt.1 %{buildroot}%{_mandir}/man1
-mkdir -p %{buildroot}%{_datadir}/bash-completion/completions
-install -pm 644 completions/bash/%{name} %{buildroot}%{_datadir}/bash-completion/completions/%{name}
+mkdir -p %{buildroot}/etc/bash_completion.d/
+install -pm 644 tmt.1* %{buildroot}%{_mandir}/man1
+install -pm 644 bin/complete %{buildroot}/etc/bash_completion.d/tmt
+mkdir -p %{buildroot}%{workdir_root}
+chmod 1777 %{buildroot}%{workdir_root}
+%if 0%{?rhel} >= 9 || 0%{?fedora}
 mkdir -p %{buildroot}/etc/%{name}/
 install -pm 644 %{name}/steps/provision/mrack/mrack* %{buildroot}/etc/%{name}/
+%endif
 
 %check
-%pyproject_check_import
+%{__python3} -m pytest -vv -m 'not web' --ignore=tests/integration
 
-%files -n tmt -f %{pyproject_files}
+
+%{!?_licensedir:%global license %%doc}
+
+
+%files
+%{_mandir}/man1/*
+%{_bindir}/%{name}
 %doc README.rst examples
-%{_bindir}/tmt
-%{_mandir}/man1/tmt.1.gz
-%{_datadir}/bash-completion/completions/%{name}
+%license LICENSE
+/etc/bash_completion.d/tmt
 
-%files -n tmt+provision-container -f %{_pyproject_ghost_distinfo}
-%files -n tmt+provision-virtual -f %{_pyproject_ghost_distinfo}
-%files -n tmt+test-convert -f %{_pyproject_ghost_distinfo}
-%files -n tmt+provision-beaker -f %{_pyproject_ghost_distinfo}
+%files -n python%{python3_pkgversion}-%{name}
+%{python3_sitelib}/%{name}/
+%{python3_sitelib}/%{name}-*.egg-info/
+%license LICENSE
+%dir %{workdir_root}
+%exclude %{python3_sitelib}/%{name}/steps/provision/{,__pycache__/}{podman,testcloud,mrack}.*
+%exclude %{python3_sitelib}/%{name}/steps/provision/mrack
+%exclude %{python3_sitelib}/%{name}/steps/report/{,__pycache__/}html*
+%exclude %{python3_sitelib}/%{name}/steps/report/{,__pycache__/}junit.*
+%exclude %{python3_sitelib}/%{name}/steps/report/{,__pycache__/}polarion.*
+%exclude %{python3_sitelib}/%{name}/steps/report/{,__pycache__/}reportportal.*
+
+%exclude %{_sysconfdir}/%{name}/mrack*
+
+%files provision-container
+%{python3_sitelib}/%{name}/steps/provision/{,__pycache__/}podman.*
+
+%if 0%{?rhel} >= 9 || 0%{?fedora}
+%files provision-beaker
+%{python3_sitelib}/%{name}/steps/provision/{,__pycache__/}mrack.*
 %config(noreplace) %{_sysconfdir}/%{name}/mrack*
-%files -n tmt+all -f %{_pyproject_ghost_distinfo}
+%endif
+
+%files provision-virtual
+%{python3_sitelib}/%{name}/steps/provision/{,__pycache__/}testcloud.*
+
+%files report-html
+%{python3_sitelib}/%{name}/steps/report/{,__pycache__/}html*
+
+%files report-junit
+%{python3_sitelib}/%{name}/steps/report/{,__pycache__/}junit.*
+
+%files report-polarion
+%{python3_sitelib}/%{name}/steps/report/{,__pycache__/}polarion.*
+
+%files report-reportportal
+%{python3_sitelib}/%{name}/steps/report/{,__pycache__/}reportportal.*
+
+%files test-convert
+%license LICENSE
+
+%files all
+%license LICENSE
+
 
 %changelog
-* Fri Apr 19 2024 Lukáš Zachar <lzachar@redhat.com> - 1.32.2
-- Remove /var/tmp workdir from rpm packaging
-- Refactor package manager discovery to allow priorities
-- Add unit test for package manager installing a file system path
-- Update pre-commit checks and add a couple of new ones
-- Removing c9s workaround for pytest-container
-- Clarify the `--last` symlink creation race a bit
-- Remove the `.travis.yml` config file
-- Correctly show the `--provision-timeout` default
-- Refresh Beaker API client in mrack to use up-to-date Kerberos ticket
-
-* Thu Mar 28 2024 Martin Hoyer <mhoyer@redhat.com> - 1.32.1
-- rpm .spec file version bump
-- Update pytest on c9s when using site-packages
-
-* Wed Mar 27 2024 Martin Hoyer <mhoyer@redhat.com> - 1.32.0
-- Support Alpine Linux `apk` package manager
-- Update the `reportportal` plugin
-- Allow `keep-git-metadata` to be used without url
-- Use `TMT_REPORT_ARTIFACTS_URL` in Polarion report plugin
-- Prepare dist-git sources using `rpmbuild -bp`
-- Add support for `zcrypt` to Beaker plugin
-- Introduce ansible-lint to format ansible files
-- Add support for linking artifacts from the report
-- Document test tags and mark beakerlib integration
-- Clarify that plan context is not applied to plan
-- Increase the default test `duration` a bit
-- Update pre-commit checks
-- Fix typos in the `tmt try` help message examples
-- Add new environment variable for test iteration identifier
-- Select no tests if `modified-only` returns nothing (#2761)
-- Debug output for `discover -h fmf --modified-only`
-- Finish unit testing of HW transformations in mrack plugin
-- Run `/plans/install/docs` in core `packit` jobs
-- Extract "package manager" functionality into plugins (#2557)
-- Allow commands whose output is not logged unless they fail
-- Move `/tests/run/shell` to `/plans/provision/local`
-- Include a simple config for the `polarion` plugin
-- Cover `report/junit` with `pyright`
-- Implement the new test check `watchdog`
-- Support `disk.driver` hw requirement for `mrack`
-- Cover `tmt.hardware` with `pyright` check
-- Bootstrap unit tests for Beaker XML transformation of HW requirements
-- Add support for emulated TPM into virtual provision plugin
-- Set default formatting of Pint units to use symbols, not names (#2736)
-- Disable IPv6 for /plans/provision/virtual in CI
-- Add support for `disk.driver` hardware requirement
-- Remove now unnecessary `NON_KVM_ADDITIONAL_WAIT` from testcloud
-- Support `disk.model-name` hw requirement for `mrack`
-- Include `context` in the test `metadata.yaml` file
-- Pass `domain_configuration` to testcloud's `wake()`
-- Document how to enable verbose/debug logging
-- Disable password authentication when using keys
-- Fix /plans/provision/virtual to set correct PROVISION_* variable
-- Log the beaker job whiteboard
-- /usr/sbin/sestatus instead of /usr/bin/sestatus (#2720)
-- Set acl permissions on the `workdir` root
-- Extend the `duration` for time-demanding tests
-- Add support for `disk.model-name` hardware requirement
-- Move deferred user stories into a separate section
-- Mark test check tests with more fitting provision tags
-- Add `Environment` and `FmfContext` among loggable types
-- Bump supported Artemis API versions to 0.0.69
-- "Show default" flag was dropped from CLI option initialization
-- Convert environment handling into a dict-like class (#2612)
-- Enable `additional_coverage` tests for pull requests (#2700)
-- Add essential requirements to checks
-- Remove mention about the full test suite from docs
-- Use the `PROVISION_HOW` variable in `provision` plans (#2688)
-- Properly detect if test is enabled somewhere
-- Check for files in `rpm-ostree install` script
-- Collect test/test check results in test invocation (#2608)
-- Test the `become` key under `virtual` provision
-- Introduce "topology" addresses for guests (#2670)
-- Make checks smarter about environments in which they should not run (#2686)
-- Cover report/display and report/html with pyright (#2682)
-- Cover `tmt.templates` with `pyright`
-- Allow custom boot/connect timeouts for testcloud VMs
-- Underline `try` menu keys
-- Drop two no longer used methods from prepare step
-- Enable the full test execution using a label (#2683)
-- Support URL as post-install-script for Artemis plugin
-- Fix dmesg check test for recent Fedoras
-
-* Tue Feb 06 2024 Michal Hlavinka <mhlavink@redhat.com> - 1.31.0
-- Simple ReST renderer for CLI help texts (#2574)
-- Generate plugin documentation from their sources (#2549)
-- Fix environment from command line updated twice (#2614)
-- Introduce a new prepare plugin for common features (#2198)
-- Remove `xfail` for the `multidict` issue on `rawhide`
-- Prevent catching avc denials from previous tests
-- Remove an obsolete workaround for `centos-stream-8`
-- Enable the `/tests/discover/libraries` test (#2222)
-- Add documentation on tmt & regular expressions
-- Fix expansion of envvar starting with `@` in fmf nodes
-- Add the `zcrypt` adapter specification
-- Allow urllib3 2.x
-- Enable `/plans/provision/virtual` for pull requests (#2558)
-- Remove the dns failures workaround
-- Fix reporting of schema errors without the `$id` key
-- AVC check now saves a timestamp on guest instead of using runner's time
-- Add check to prevent `tmt try` deleting imported libraries
-- Reduce usage of locks in the `testcloud` plugin
-- Add support for envvars import and export to Polarion
-- Use enumeration to implement action handling
-- Handle the `ctrl-d` shortcut in `tmt try`
-- Run tests with `interactive` mode during `tmt try`
-- Fix `tmt import --dry` and Polarion import file name
-- Document that `name` is supported in `--filter` search (#2637)
-- Refactor running of interactive commands (#2554)
-- Create container images from the latest non-dev copr build
-- Fail `dmesg` check if it contains `Call Trace` or `segfault`
-- Mention the reboot timeout variable in the release notes
-- Bump the default reboot timeout to 10 minutes
-- Allow change of the default reboot timeout via environment variable
-- Introduce essential requirements
-- Allow `--update-missing` to change the default `how` value
-- Document the new `become` feature
-- Raise an error when loading pre-1.24 `tests.yaml`
-- Support terminating process running test via its test invocation (#2589)
-- Fix `egrep` warning in `/plans/install/docs`
-- Test framework may provide additional test requirements
-- Improve logging of AVC check plugin and its test
-- Cleanup logging in `tmt.utils.create_file()`
-- Drop connection closed messages from test output
-- Recommend `qemu-kvm-core` for `provision-virtual`
-- Fix `/tests/plan/import` to not use special ref (#2627)
-- Improve imported plan modification test to verify the order as well (#2618)
-- Retry the `git clone` action multiple times
-- Simplify the debuginfo installation test
-- Support `virtualization.is-virtualized` in `mrack` plugin
-- Support running all or selected steps `--again`
-- Allow hardware requirements limit acceptable operators
-- Fix inheritance of some keys in provision step data
-- Run a callback when command process starts
-- Add support for hard reboot to Beaker provision plugin
-- Make collected requires/recommends guest-aware
-- Copy top level `main.fmf` during testdir pruning
-- Add support for Artemis API v0.0.67
-- Add support for `cpu.flag` hardware requirement
-- Use a different pidfile location for the full test
-- Clear test invocation data path use and derived paths
-- Add support for disallowing plugins via command line
-- Use constraint classes specific for particular value type
-- Making rhts metric value optional.
-- Ignore tarballs and generated man page
-- Cover `tmt.libraries` with `pyright` checks
-- Parallelize the `provision` step
-- Let `click` know about the maximal output width
-- Cover `tmt.identifier` with `pyright` checks
-- Extend `duration` of `/tests/core/escaping` a bit
-- Move docs templates into their own directory
-- Drop no longer needed `tmt.utils.copytree()`
-- Drop no longer used `tmt.utils.listify()`
-- Provision plugins use `self.data` instead of `self.get()`
-- Prepare and finish plugins use self.data instead of self.get()
-- Fix tmt.utils.format to allow int and float values
-- Move code-related pages under new `code` directory
-- Warn on test case not found in Polarion during report
-- Bump pre-commit linters
-- When cloning a logger, give it its own copy of labels
-- Add a `Toolbelt Catalog` entry for `tmt`
-- Enable the `avc` check for all `tmt` tests
-- Fix dmesg check test on Fedora rawhide & newer
-
-* Fri Dec 08 2023 Petr Šplíchal <psplicha@redhat.com> - 1.30.0
-- Make `arch` field unsupported in the spec
-- Introduce `tty` test attribute to control terminal environment
-- Ensure the imported plan's `enabled` key is respected
-- Add support for user defined templates (#2519)
-- Update the common schema for the `check` key
-- Create a `checks` directory to store avc/dmesg checks
-- Correctly update environment from importing plan
-- Implement `tmt try` for interactive sessions
-- Use a shorter time for `podman stop` (#2480)
-- Add the `redis` server as a multihost sync example
-- Improve documentation of test checks
-- Adjust the format of Polarion test run title
-- Run all available tests only upon a user request
-- Rename `name` to `how` in test check specification (#2527)
-- Link `inheritance` and `elasticity` from the guide
-- Add the `fips` field for the `polarion` report
-- Cover `tmt.cli` with `pyright` (#2520)
-- Custom soft/hard reboot commands for the connect provision plugin
-- Add `--feeling-safe` for allowing possibly dangerous actions
-- Update docs for the `polarion` report plugin
-- Move test-requested reboot handling into test invocation class
-- Add `-i` to select an image in beaker and artemis
-- Document how to use `yaml` anchors and aliases
-- Simplify log decolorizers to support pickleable trees
-- Add description field to polarion report plugin
-- Make check plugin class generic over check class (#2502)
-- Increase verbosity of Artemis provisioning errors
-- Add more distros to the `mrack` config
-- Move the `contact` key to the `Core` class
-- Bump tmt in lint pre-commit check to 1.29.0
-- Add Python 3.12 to the test matrix
-- Move `mrack` configs into `tmt+provision-beaker`
-- Allow running upgrade from the current repository
-- Fix remote nested library fetch and add test
-- Cover tmt.options with pyright
-- Cover tmt.checks, tmt.frameworks and tmt.log with pyright
-- Cover tmt.result with pyright checks
-- Store fmf `context` in results for each test
-- Add networks to the podman provision plugin (#2419)
-- Add a dedicated exit code when all tests reported `skip` result
-- Move invocation-related fields out of `Test` class
-- Remove expected fail from `/tests/pip/install/full`
-- Convert test execution internals to use "invocation" bundle (#2469)
-- Introduce a separate page `Code` for code docs
-- Add code documentation generated from docstrings
-- Fix possible unbound variable after import-under-try
-- Add `pyright` as a `pre-commit` check
-- Add a helper for nonconflicting, multihost-safe filenames
-- Add the `whiteboard` option for `beaker` provision
-- Support timestamped logging even on the terminal
-- Enable pyupgrade `UP` ruff rule
-- Fix `UP035` deprecated-import violations
-- Fix `UP034` extraneous-parentheses violation
-- Fix `UP033` lru-cache-with-maxsize-none violations
-- Fix `UP032` f-string violations
-- Fix `UP013` convert-typed-dict-functional-to-class
-- Fix `UP009` utf8-encoding-declaration violations
-- Fix `UP006` non-pep585-annotation violations
-- Try several times to build the `become` container (#2467)
-- Add .py file extension to docs scripts (#2476)
-- Add a link to the Testing Farm documentation
-- Use `renku` as the default theme for building docs
-- Properly normalize the test `path` key
-- Add an `adjust` example for enabling custom repo
-- Drop special normalization methods
-- Disable `dist-git-init` in the `distgit` test (#2463)
-
-* Mon Nov 06 2023 Lukáš Zachar <lzachar@redhat.com> - 1.29.0
-- Add page `Releases` to highlight important changes
-- Update and polish hardware requirement docs
-- Refactor generating of stories and lint check docs
-- Add support for pruning test directories
-- Download all sources for `dist-git-source`
-- Source plan environment variables after `prepare` and `execute` steps
-- Framework is not consulted on results provided by tmt-report-result
-- Run scripts with `sudo` when `become` is on
-- Add `retry` for pulling images in the `podman` plugin
-- Add hardware schema for GPU
-- Change the default test pidfile directory to `/var/tmp`
-- Add `device` key into the `hardware` specification
-- Update code and test coverage for the `check` key
-- Document case-insensitive context dimension values
-- Fix use of the `-name` suffix in system HW requirement
-- Correct parsing when called as `rhts`
-- Reconcile HW requirements with virtual's own options
-- Move the `README` content into `docs/overview`
-- Make `BasePlugin` generic over step data class
-- Use `UpdatableMessage` for execute/internal progress bar
-- Drop an empty line from the pull request template
-- Add `runner` property to run with test runner facts
-- Export sources of an `fmf` node
-- Bump pre-commit linters to newer versions
-- Append the checklist template to new pull requests
-- Extend tmt-reboot to allow reboot from outside of the test process
-- Allow optional doc themes
-- Use consistent style for multiword test names
-- Show `check` results in the `html` report
-- Update `where` implementation, docs & test coverage (#2411)
-- Document difference between key, field and option
-- Rename multiword keys to use dashes in export and serialization
-- Allow Path instance to be used when constructing commands
-- Switch `Logger.print()` to output to stdout
-- Replace Generator type annotation with Iterator (#2405)
-- Refactor data container helpers
-- When merging fmf and CLI, use shared base step data
-- Fix installing package from the command line
-- Add support for checks to have their data packages
-- Switch `tmt.identifier` from using `fmf.log`
-- Hide test/plan/story internal fields from export
-- Fix full test suite after recent packaging changes
-- Update the list of code owners
-- Include the `fmf` root in the tarball as well
-
-* Wed Oct 11 2023 Petr Šplíchal <psplicha@redhat.com> - 1.28.2
-- Build man page during the `release` action
-
-* Wed Oct 11 2023 Petr Šplíchal <psplicha@redhat.com> - 1.28.1
-- Remove the `.dev0` suffix from the spec `Version`
-
-* Fri Oct 06 2023 Petr Šplíchal <psplicha@redhat.com> - 1.28.0
-- Update the `release` action with `hatch` changes
-- Fix the multihost web test to work with container
-- Add `skip` as a supported custom result outcome
-- Add docs for the new `--update-missing` option
-- Remove irrelevant mention of `rhel-8` in the spec
-- Record start/end time & duration of test checks
-- Add `--update-missing` to update phase fields only when not set by fmf
-- Add --skip-prepare-verify-ssh and --post-install-script to artemis plugin (#2347)
-- Force tmt-link pre-commit to use fmf 1.3.0 which brings new features (#2376)
-- Add logging of applied adjust rules
-- Handle all context dimension values case insensitive
-- Hide `OPTIONLESS_FIELDS` from `tmt plan show`
-- Add context into the `html` report
-- Display test check results in `display` report output
-- Fix creation of guest data from plugin options
-- Allow wider output
-- Beaker plugin is negating Beaker operators by default
-- Include link to the data directory in the html report
-- Teach logging methods to handle common types
-- Move the copr repository to the `teemtee` group
-- Add a new `cpu` property `stepping` to hardware
-- Extract beakerlib phase name to a failure log
-- Always show the real beaker job id
-- Create a production copr build for each release
-- AVC denials check for tests (#2331)
-- Add nice & colorfull help to "make" targets
-- Include more dependencies in the dev environment
-- Stop using the `_version.py` file
-- Replace `opt()` for `--dry/--force` with properties
-- Update build names for copr/main and pull requests
-- Use `hatch` and `pyproject`, refactor `tmt.spec`
-- Use dataclass for log record details instead of typed dict
-- Refactor html report plugin to use existing template rendering
-- Narrow type of hardware constraint variants
-- Refactor parameters of `Plan._iter_steps()`
-- Use `format_value()` instead of `pprint()`
-- Use the minimal plan to test imported plan execution
-- Refactor exception rendering to use generators
-- Add the `export` callback for fields (#2288)
-- Update a verified-by link for the beaker provision
-- Multi-string help texts converted to multiline strings
-- Make the upload to PyPI working again
-- Hide command event debug logs behind a log topic (#2281)
-- Replace `pkg_resources` with `importlib.resources`
-- Wrap `click.Choice` use with `choices` parameter
-- Lower unnecessary verbosity of podman commands
-- Move check-related code into `tmt.checks`
-- Disable `systemd-resolved` to prevent dns failures
-- Adjust test coverage for deep beakerlib libraries
-- Document migration from provision.fmf to tmt (#2325)
-- Remove TBD of initiator context for Packit
-- Fix output indentation of imported plans
-- Copr repo with a group owner requires quotes
-
-* Wed Sep 06 2023 Petr Šplíchal <psplicha@redhat.com> - 1.27.0-1
-- Use `testcloud` domain API v2
-- Bootstrap before/after test checks (#2210)
-- Separate value formatting from key/value nature of tmt.utils.format()
-- Render `link` fields in tmt stories and specs
-- Render default friendly command for guest execution
-- Use consistently plural/singular forms in docs
-- Make file/fmf dependencies hashable
-- Rewrite git url for discover fmf: modified-only
-- Refactor Artemis and Beaker provision tests to make room for HW
-- Adjust imported plan to let its adjust rules make changes
-- Get Ansible logging on par with general command execution
-- Support Click versions newer than 8.1.4
-- Teach tmt test create to link relevant issues (#2273)
-- Add story describing CLI for multiple phases
-- When rendering exception, indetation was dropping empty lines
-- Expose tmt version as an environment variable
-- Fix handling of integers and hostname in Beaker plugin
-- Fix bug where polarion component is misinterpreted as list
-- Refactor recording of CLI subcommand invocations (#2188)
-- Put `--help` at the end of the CLI in the step usage
-- Extend the expected `pip install` fail to `f-39`
-- Make `tmt init` add .fmf directory into git index
-- Fix guest data show() and how it displays hardware requirements
-- Add lint check for matching guests, roles and where keys
-- Add -e/--environment/--environment-files to plan show/export
-- No more need to install `pre-commit` using `pip`
-- Ensure that step phases have unique names
-- Verbose regular expression for linter descriptions
-- Initial draft of hardware requirement helpers
-- Simplify the reportportal plugin test using `yq`
-- Add dynamic ref support to library type dependency
-- Remove `epel-8` and `python-3.6` specifics
-- Use the latest `sphinx-rtd-theme` for docs building
-- Full `pip install` expected to fail on `Rawhide`
-- Add missing name attribute to report plugins schema
-- Add missing arguments in polarion report schema
-- Extend sufficiently the full test suite duration
-- Add support for log types to Artemis plugin
-- Fix `tmt run --follow`, add test coverage for it
-- Remove the temporary hotfix for deep libraries
-
-* Mon Jul 31 2023 Lukáš Zachar <lzachar@redhat.com> - 1.26.0
-- Do not throw an exception on missing mrack.log
-- Allow injecting credentials for git clone
-- Exception in web_link() when node root is missing
-- Rewrite url in git_clone
-- Add support for rendering error tracebacks
-- ReST export plugin should accept --template option
-- Add `role` to the Beaker provision plugin schema
-- Fix test checking custom destination for libraries
-- Create plans to cover individual step features (#2216)
-- Add cache_property for things that are generated but not often
-- Simplify public git conversion with a declarative list
-- Spec-based container becomes generic over input/output specs
-- Clean up logging in `tmt.utils.create_directory()`
-- Move test framework code into distinct framework classes
-- Add template option to polarion report
-- Group discover/fmf options, improve wording a bit
-- Record tmt command line in tmt log
-- Add note about dynamic ref to the plan import spec
-- Use the `Deprecated` class for deprecated options
-- Remove `python3-mrack-beaker` from `BuildRequires`
-- Switch discover/fmf to our field() implementation
-- Lock the `click` version < 8.1.4
-- Refine examples of plans > discover > fmf
-- Override packit actions for `propose_downstream`
-
-* Mon Jul 10 2023 Lukáš Zachar <lzachar@redhat.com> - 1.25.0
-- Test for pruning needs VM
-- Internal anonymous git:// access is deprecated
-- Beakerlibs pruning and merge
-- Add dynamic ref evaluation support to plan import
-- Replace self.opt() when looking for debug/verbose/quiet setting
-- Reimplement the `ReportPortal` plugin using API
-- Make `Step` class own export of step data (#2040)
-- Make relevancy/coverage linters to not re-read fmf files
-- Add a single `tmpdir` fixture for all Python versions
-- Replace named tuples with data classes
-- Replace `/` in safe name, and fix prepare step to use safe names
-- Do not export fmf id's ref when it's the default branch
-- Move the sync libraries into a separate section
-- Allow running next plan in queue when one fails to complete
-- Fix a too strict check for the detected library
-- Convert provision plugins' step data to our field implementation
-- Convert execute plugins to `tmt.utils.field()` for options
-- Cache that beakerlib/library repo is missing
-- Use code-block directive for examples and code blocks
-- Add the `show()` method for guest data packages
-- Turn fmf context into a fancy dict
-- Enable ruff checks for mutable dataclass field defaults
-- Create option metavar from listed choices
-- Document how to modify imported plans
-- Recommend needs a different option for `dnf5`
-- Ask ruff to show what it fixed
-- Bumps supported Artemis API to 0.0.58
-- Use `--version` to gather the package_manager fact
-- Use f-strings where possible
-- Bump pre-commit hooks to latest version
-- Fix ruff RUF010: Use f-strings conversion flags
-- Fix py<38 mypy type:ignore being on wrong line
-- Move isort to ruff
-- Enable passing Pylint checks
-- Fix ruff RSE102: Unnecessary parentheses on exception
-- Fix ruff PIE: flake8-pie errors
-- Remove duplicates from ruff rules selection
-- Fix ruff SIM: flake8-simplify errors
-- Fix ruff RET: flake8-return errors
-- Fix ruff PT: flake8-pytest-style errors
-- Fix ruff UP: pyupgrade errors
-- Fix ruff N: pep8-naming errors
-- Fix ruff RUF005: collection-literal-concatenation
-- Fix ruff B: flake8-bugbear errors
-- Fix flake8 C405: unnecessary literal set
-- Fix flake8 C401: unnecessary generator set
-- Fix flake8 C416: unnecessary comprehension
-- Fix flake8 C408: unnecessary collection calls
-- Polarion report set to UTC timezone
-- Add `Organize Data` as a new tmt guide chapter
-- Fix emptiness check of /var/tmp/tmt in /tests/status/base
-- Allow modification of imported plans
-- Raise error if malformed test metadata is given
-- Ensure test with empty custom results ends as an ERROR
-- Fix /tests/status/base when /var/tmp/tmt is empty
-- Remove `pytest.ini` from the `Makefile` targets
-- Bad source path for local libraries file require
-- Remove useless loop.cycle() from the HTML report
-- Implement basic filtering for the HTML report
-- Cleanup of "logging function" types
-- Do not patch verbosity in discover for --fmf-id
-- Drop enum from HW hypervisor and boot method constraints
-- Fix enforcement of workdir root in full workdir root test
-- Narrow type of file & library dependencies
-- Make web-link test play nicely with custom SSH host config
-- Use serialization callbacks for last script fields
-- Save click context in click context object
-- Add the `envvar` argument to `utils.field()`
-- Improve structure of the packit config a bit
-- Update release instructions with simplified steps
-- Sync changelog when creating downstream release
-
-* Fri Jun 09 2023 Petr Šplíchal <psplicha@redhat.com> - 1.24.1-1
-- Revert the `Source0` url to the original value
-- Use correct url for the release archive, fix docs
-
-* Wed Jun 07 2023 Petr Šplíchal <psplicha@redhat.com> - 1.24.0-1
-- Do not display guest facts when showing a plan
-- Add new guide/summary for multihost testing
-- Define a "plugin registry" class
-- Hide `facts` in the `virtual` provision plugin
-- Cache resolved linters
-- Improve documentation of lint checks (#2089)
-- A custom wrapper for options instead of click.option()
-- Identify incorrect subcommand after a correct one
-- Remove one extra space between @ and decorator name
-- Assign envvars to Polarion report arguments
-- Expose "key address" to normalization callbacks (#1869)
-- Move export of special test/plan/story fields to their respective classes
-- Expose guest topology to tests and scripts (#2072)
-- Enable building downstream release using Packit
-- Add sections for environment variable groups
-- Add default envvar to plugin options
-- Load env TMT_WORKDIR_ROOT when running tmt status (#2087)
-- Opportunistically use "selectable" entry_points.
-- Explicitly convert tmpdir to str in test_utils.py.
-- Move pytest.ini contents to pyproject.toml.
-- Rename Require* classes to Dependency* (#2099)
-- Expose fmf ID of tests in results
-- Use the `tmt-lint` pre-commit hook
-- Turn finish step implementation to queue-based one (#2110)
-- Convert base classes to data classes (#2080)
-- Crashed prepare and execute steps propagate all causes
-- Support exceptions with multiple causes
-- Make "needs sudo" a guest fact (#2096)
-- Test data path must use safe guest/test names
-- Support for multi case import from Polarion and Polarion as only source (#2084)
-- Fix search function in docs
-- Make tmt test wrapper name unique to avoid race conditions
-- Change link-polarion argument default to false
-- Add export plugin for JSON (#2058)
-- Handle el6 as a legacy os too in virtual provision
-- Hint beakerlib is old when result parsing fails
-- Revert "Fix dry mode handling when running a remote plan"
-- Set a new dict instance to the Plan class
-- Replaces "common" object with logger in method hint logging
-- Parallelize prepare and execute steps
-- Formalizing guest "facts" storage
-- Support urllib3 2.x and its allowed_methods/method_whitelist
-- Require setuptools
-
-* Thu May 11 2023 Lukáš Zachar <lzachar@redhat.com> - 1.23.0-1
-- Add `Artemis` to the `provision` documentation
-- Add artemis's user defined watchdog specification
-- Add support for require of files and directories
-- Expose test serial number as an environment variable
-- Print only failed objects when linting in hook
-- Refactored metadata linting
-- Request newer os image and python version for docs
-- Explore all available plugins only once
-- Add test start/end timestamps into results
-- Implement `deprecated` for obsoleted options
-- Unify results examples in test and plan specification
-- Convert gitlab private namespace into dist-git url
-- Shorter Nitrate summary name
-- Correct the path of Ansible playbook
-- Refactor logging during plugin discovery, using tmt's logging
-- Improve names and docs around CLI context in Common classes
-- Fix ruamel.yaml type waivers that mypy sometimes ignores
-- Drop some no longer valid TODO comments
-- Replace '--t' by '-t' when creating a new plan with template
-- Add a new cpu property `flag` to the hardware spec
-- Fix duplicate export for Polarion hyperlinks
-- Option to list locally cached images for testcloud
-- Log out testcloud version in virtual provision
-- Use yq instead of grep when testing YAML content
-- Don't use specific addresses in virtual provision
-- Polish workdir pruning - pathlib transition & logging
-- Support for fuzzy matching subcommand
-- Add new link relation `test-script` definition
-- Remove `group` from the `multihost` specification
-- Move "show exception" code to utils
-- Add missing support for 0.0.55 and 0.0.48 API
-- Add type annotations to tmt.steps.STEPS/ACTIONS
-- Support logging "topics" to allow lower unnecessary verbosity
-- Add support for right-padding of logging labels
-- Move tools config to `pyproject.toml`, add Ruff
-- Example to parametrize test selection via envars
-- Merge run_command() and _run_command() into Command.run()
-- Install beakerlib into images used in test/full
-- Don't run `ShellCheck` on tests & decrease severity
-- Support multiline strings for option help texts
-- Fix tests run only in full testsuite
-
 * Fri Apr 14 2023 Petr Šplíchal <psplicha@redhat.com> - 1.22.0-1
 - Change help text of the `tmt --root` option
 - Add support for `results.json` in custom results

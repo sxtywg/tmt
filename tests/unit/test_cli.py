@@ -1,16 +1,18 @@
+# coding: utf-8
+
 import dataclasses
 import os
 import shutil
 import sys
 import tempfile
+from typing import Tuple
 
 import _pytest.monkeypatch
 import pytest
+from click.testing import CliRunner
 
 import tmt.cli
 import tmt.log
-
-from .. import CliRunner
 
 # Prepare path to examples
 PATH = os.path.dirname(os.path.realpath(__file__))
@@ -112,9 +114,7 @@ def test_step_execute():
 
     # Test execute empty with discover output missing
     assert result.exit_code != 0
-    assert isinstance(result.exception, tmt.utils.GeneralError)
-    assert len(result.exception.causes) == 1
-    assert isinstance(result.exception.causes[0], tmt.utils.ExecuteError)
+    assert isinstance(result.exception, tmt.utils.ExecuteError)
     assert step in result.output
     assert 'provision' not in result.output
     shutil.rmtree(tmp)
@@ -138,7 +138,7 @@ class DecideColorizationTestcase:
 
     # Name of the testcase and expected outcome of decide_colorization()
     name: str
-    expected: tuple[bool, bool]
+    expected: Tuple[bool, bool]
 
     # Testcase environment setup to perform before calling decide_colorization()
     set_no_color_option: bool = False
@@ -231,8 +231,8 @@ _DECIDE_COLORIZATION_TESTCASES = [
 
 
 @pytest.mark.parametrize(
-    'testcase',
-    list(_DECIDE_COLORIZATION_TESTCASES),
+    ('testcase',),
+    [(testcase,) for testcase in _DECIDE_COLORIZATION_TESTCASES],
     ids=[testcase.name for testcase in _DECIDE_COLORIZATION_TESTCASES]
     )
 def test_decide_colorization(
@@ -243,8 +243,8 @@ def test_decide_colorization(
     monkeypatch.delenv('TMT_NO_COLOR', raising=False)
     monkeypatch.delenv('TMT_FORCE_COLOR', raising=False)
 
-    no_color = bool(testcase.set_no_color_option)
-    force_color = bool(testcase.set_force_color_option)
+    no_color = True if testcase.set_no_color_option else False
+    force_color = True if testcase.set_force_color_option else False
 
     if testcase.set_no_color_envvar:
         monkeypatch.setenv('NO_COLOR', '')

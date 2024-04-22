@@ -1,19 +1,14 @@
 import dataclasses
 import types
-from typing import TYPE_CHECKING, Any, Optional, cast, overload
+from typing import Any, Optional, cast, overload
 
 import tmt
 import tmt.base
-import tmt.log
 import tmt.options
 import tmt.result
 import tmt.steps
 import tmt.steps.report
-import tmt.utils
-from tmt.utils import Path, field
-
-if TYPE_CHECKING:
-    from tmt.steps.report import ReportPlugin, ReportStepDataT
+from tmt.utils import field
 
 DEFAULT_NAME = "junit.xml"
 
@@ -26,13 +21,17 @@ JunitTestSuite = Any
 
 
 def import_junit_xml() -> None:
-    """ Import junit_xml module only when needed """
+    """
+    Import junit_xml module only when needed
+
+    Until we have a separate package for each plugin.
+    """
     global junit_xml
     try:
         import junit_xml
     except ImportError:
         raise tmt.utils.ReportError(
-            "Install 'tmt+report-junit' for JUnit XML reports")
+            "Missing 'junit-xml', fixable by 'pip install tmt[report-junit]'.")
 
 
 @overload
@@ -55,7 +54,7 @@ def duration_to_seconds(duration: Optional[str]) -> Optional[int]:
             f"Malformed duration '{duration}' ({error}).")
 
 
-def make_junit_xml(report: 'ReportPlugin[ReportStepDataT]') -> JunitTestSuite:
+def make_junit_xml(report: "tmt.steps.report.ReportPlugin") -> JunitTestSuite:
     """ Create junit xml object """
     import_junit_xml()
     assert junit_xml
@@ -89,26 +88,26 @@ def make_junit_xml(report: 'ReportPlugin[ReportStepDataT]') -> JunitTestSuite:
 
 @dataclasses.dataclass
 class ReportJUnitData(tmt.steps.report.ReportStepData):
-    file: Optional[Path] = field(
+    file: Optional[str] = field(
         default=None,
         option='--file',
-        metavar='PATH',
-        help='Path to the file to store JUnit to.',
-        normalize=lambda key_address, raw_value, logger: Path(raw_value) if raw_value else None)
+        metavar='FILE',
+        help='Path to the file to store junit to.'
+        )
 
 
 @tmt.steps.provides_method('junit')
-class ReportJUnit(tmt.steps.report.ReportPlugin[ReportJUnitData]):
+class ReportJUnit(tmt.steps.report.ReportPlugin):
     """
-    Save test results in JUnit format.
+    Write test results in JUnit format
 
-    When ``file`` is not specified, output is written into a file
-    named ``junit.xml`` located in the current workdir.
+    When FILE is not specified output is written to the 'junit.xml'
+    located in the current workdir.
     """
 
     _data_class = ReportJUnitData
 
-    def prune(self, logger: tmt.log.Logger) -> None:
+    def prune(self) -> None:
         """ Do not prune generated junit report """
         pass
 
@@ -121,7 +120,7 @@ class ReportJUnit(tmt.steps.report.ReportPlugin[ReportJUnitData]):
         assert junit_xml  # narrow type
 
         assert self.workdir is not None
-        f_path = self.data.file or self.workdir / DEFAULT_NAME
+        f_path = self.get("file", self.workdir / DEFAULT_NAME)
         try:
             with open(f_path, 'w') as fw:
                 if hasattr(junit_xml, 'to_xml_report_file'):

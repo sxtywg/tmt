@@ -44,5 +44,5 @@ example: |
     priority: must have
 
 link:
-  - implemented-by: /tmt/base.py
+  - implemented-by: /tmp/base.py
   - verified-by: /tests/story/priority

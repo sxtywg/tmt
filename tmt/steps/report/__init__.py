@@ -1,13 +1,10 @@
 import dataclasses
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Any, List, Optional, Type, Union, cast
 
 import click
 
 import tmt
-import tmt.plugins
 import tmt.steps
-from tmt.options import option
-from tmt.plugins import PluginRegistry
 from tmt.steps import Action
 
 if TYPE_CHECKING:
@@ -19,27 +16,22 @@ class ReportStepData(tmt.steps.StepData):
     pass
 
 
-ReportStepDataT = TypeVar('ReportStepDataT', bound=ReportStepData)
-
-
-class ReportPlugin(tmt.steps.GuestlessPlugin[ReportStepDataT]):
+class ReportPlugin(tmt.steps.GuestlessPlugin):
     """ Common parent of report plugins """
 
-    # ignore[assignment]: as a base class, ReportStepData is not included in
-    # ReportStepDataT.
-    _data_class = ReportStepData  # type: ignore[assignment]
+    _data_class = ReportStepData
 
     # Default implementation for report is display
     how = 'display'
 
-    # Methods ("how: ..." implementations) registered for the same step.
-    _supported_methods: PluginRegistry[tmt.steps.Method] = PluginRegistry()
+    # List of all supported methods aggregated from all plugins of the same step.
+    _supported_methods: List[tmt.steps.Method] = []
 
     @classmethod
     def base_command(
             cls,
             usage: str,
-            method_class: Optional[type[click.Command]] = None) -> click.Command:
+            method_class: Optional[Type[click.Command]] = None) -> click.Command:
         """ Create base click command (common for all report plugins) """
 
         # Prepare general usage message for the step
@@ -49,13 +41,12 @@ class ReportPlugin(tmt.steps.GuestlessPlugin[ReportStepDataT]):
         # Create the command
         @click.command(cls=method_class, help=usage)
         @click.pass_context
-        @option(
+        @click.option(
             '-h', '--how', metavar='METHOD',
             help='Use specified method for results reporting.')
-        @tmt.steps.PHASE_OPTIONS
         def report(context: 'tmt.cli.Context', **kwargs: Any) -> None:
             context.obj.steps.add('report')
-            Report.store_cli_invocation(context)
+            Report._save_context(context)
 
         return report
 
@@ -75,14 +66,12 @@ class Report(tmt.steps.Step):
         # Choose the right plugin and wake it up
         for data in self.data:
             # FIXME: cast() - see https://github.com/teemtee/tmt/issues/1599
-            plugin = cast(
-                ReportPlugin[ReportStepData],
-                ReportPlugin.delegate(self, data=data))
+            plugin = cast(ReportPlugin, ReportPlugin.delegate(self, data=data))
             plugin.wake()
             self._phases.append(plugin)
 
-        # Nothing more to do if already done and not asked to run again
-        if self.status() == 'done' and not self.should_run_again:
+        # Nothing more to do if already done
+        if self.status() == 'done':
             self.debug(
                 'Report wake up complete (already done before).', level=2)
         # Save status and step data (now we know what to do)
@@ -95,9 +84,9 @@ class Report(tmt.steps.Step):
         summary = tmt.result.Result.summary(self.plan.execute.results())
         self.info('summary', summary, 'green', shift=1)
 
-    def go(self, force: bool = False) -> None:
-        """ Report the results """
-        super().go(force=force)
+    def go(self) -> None:
+        """ Report the guests """
+        super().go()
 
         # Nothing more to do if already done
         if self.status() == 'done':
@@ -113,7 +102,7 @@ class Report(tmt.steps.Step):
             # but pre-commit's mypy sees `Phase` - which should not be the right answer
             # since `classes` is clearly not `None`. Adding `cast()` to overcome this
             # because I can't find the actual error :/
-            cast(Union[Action, ReportPlugin[ReportStepData]], phase).go()
+            cast(Union[Action, ReportPlugin], phase).go()
 
         # Give a summary, update status and save
         self.summary()

@@ -6,4 +6,3 @@ path: /
 require:
   - url: https://github.com/beakerlib/test
     name: /very/deep/file
-    type: library

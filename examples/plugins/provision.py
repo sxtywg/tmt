@@ -1,7 +1,7 @@
+import click
 
 import tmt
 import tmt.steps
-from tmt.options import option
 
 # See the online documentation for more details about writing plugins
 # https://tmt.readthedocs.io/en/stable/plugins.html
@@ -14,14 +14,10 @@ class ProvisionExample(tmt.steps.provision.ProvisionPlugin):
 
     Minimal configuration using the latest nothing image:
 
-    .. code-block:: yaml
-
         provision:
             how: example
 
     Full configuration example:
-
-    .. code-block:: yaml
 
         provision:
             how: example
@@ -33,13 +29,13 @@ class ProvisionExample(tmt.steps.provision.ProvisionPlugin):
     def options(cls, how=None):
         """ Prepare command line options for example """
         return [
-            option(
+            click.option(
                 '-w', '--what', metavar='WHAT',
                 help="Example how to pass value."),
-            option(
+            click.option(
                 '-s', '--switch', is_flag=True,
-                help="Example how to enable something."),
-            *super().options(how)]
+                help="Example how to enable something.")
+            ] + super().options(how)
 
     def default(self, option, default=None):
         """ Return the default value for the given option """
@@ -77,7 +73,7 @@ class ProvisionExample(tmt.steps.provision.ProvisionPlugin):
         print("go() called")
 
         # Data dictionary is used to pass information among classes.
-        data = {'what': 'Another default what. Object variable can be used.'}
+        data = dict(what='Another default what. Object variable can be used.')
 
         for opt in ['what', 'switch']:
             val = self.get(opt)
@@ -88,7 +84,6 @@ class ProvisionExample(tmt.steps.provision.ProvisionPlugin):
 
         self._guest = GuestExample(data, name=self.name, parent=self.step)
         self._guest.start()
-        self._guest.setup()
 
     def guest(self):
         """
@@ -111,7 +106,6 @@ class GuestExample(tmt.Guest):
     user ....... user name to log in
     key ........ private key
     password ... password
-    become ..... whether to run the scripts with sudo
 
     These are by default imported into instance attributes (see the
     class attribute '_keys' in tmt.Guest class).
@@ -192,16 +186,6 @@ class GuestExample(tmt.Guest):
         raise tmt.utils.ProvisionError(
             "All attempts to provision a machine with example failed.")
 
-    def setup(self):
-        """
-        Setup the guest
-
-        This should include all necessary configurations inside the instance
-        to get the plans to work. For example, ensure the permissions in
-        TMT_WORKDIR_ROOT will work if the user is non-root.
-        """
-        print("setup() called")
-
     # For advanced development
     def execute(self, command, **kwargs):
         """
@@ -222,7 +206,8 @@ class GuestExample(tmt.Guest):
 
         print("execute() called. This is an optional overload...")
 
-        return ["Fedora", "whatever"]
+        output = ["Fedora", "whatever"]
+        return output
 
     def delete(self):
         """ Remove the example instance """

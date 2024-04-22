@@ -19,9 +19,6 @@ properties:
     enum:
       - polarion
 
-  name:
-    type: string
-
   file:
     type: string
 
@@ -30,15 +27,6 @@ properties:
 
   title:
     type: string
-
-  description:
-    type: string
-
-  template:
-    type: string
-
-  use-facts:
-    type: boolean
 
   upload:
     type: boolean
@@ -69,9 +57,6 @@ properties:
 
   composeid:
     type: string
-
-  fips:
-    type: boolean
 
 required:
   - how

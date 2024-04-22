@@ -1,467 +1,77 @@
-import asyncio
 import dataclasses
 import datetime
 import logging
 import os
-from collections.abc import Mapping
-from contextlib import suppress
-from functools import wraps
-from typing import Any, Callable, Optional, TypedDict, Union, cast
+import sys
+from typing import Any, Dict, List, Optional, Tuple, cast
+
+import click
 
 import tmt
-import tmt.hardware
-import tmt.log
 import tmt.options
 import tmt.steps
 import tmt.steps.provision
 import tmt.utils
-from tmt.utils import Command, ProvisionError, ShellScript, UpdatableMessage, field
+from tmt.utils import ProvisionError, updatable_message
 
-mrack: Any
-providers: Any
-ProvisioningError: Any
-NotAuthenticatedError: Any
-BEAKER: Any
-BeakerProvider: Any
-BeakerTransformer: Any
-TmtBeakerTransformer: Any
+if sys.version_info >= (3, 8):
+    from typing import TypedDict
+else:
+    from typing_extensions import TypedDict
 
-_MRACK_IMPORTED: bool = False
+import asyncio
+from functools import wraps
+
+mrack = Any
+providers = Any
+ProvisioningError = Any
+NotAuthenticatedError = Any
+BEAKER = Any
+BeakerProvider = Any
+BeakerTransformer = Any
+TmtBeakerTransformer = Any
 
 DEFAULT_USER = 'root'
 DEFAULT_ARCH = 'x86_64'
-DEFAULT_IMAGE = 'fedora'
 DEFAULT_PROVISION_TIMEOUT = 3600  # 1 hour timeout at least
 DEFAULT_PROVISION_TICK = 60  # poll job each minute
 
-#: How often Beaker session should be refreshed to pick up up-to-date
-#: Kerberos ticket.
-DEFAULT_API_SESSION_REFRESH = 3600
 
 # Type annotation for "data" package describing a guest instance. Passed
 # between load() and save() calls
+GuestInspectType = TypedDict(
+    'GuestInspectType', {
+        "status": str,
+        "system": str,
+        'address': Optional[str]
+        }
+    )
 
+size_translation = {
+    "TB": 1000000,
+    "GB": 1000,
+    "MB": 1,
+    "TiB": 1048576,
+    "GiB": 1024,
+    "MiB": 1,
+    }
 
-class GuestInspectType(TypedDict):
-    status: str
-    system: str
-    address: Optional[str]
-
-
-SUPPORTED_HARDWARE_CONSTRAINTS: list[str] = [
-    'cpu.flag',
-    'cpu.processors',
-    'cpu.model',
-    'disk.size',
-    'disk.model_name',
-    'disk.driver',
-    'hostname',
-    'memory',
-    'virtualization.is_virtualized',
-    'zcrypt',
+operators = [
+    "~=",
+    ">=",
+    "<=",
+    ">",
+    "<",
+    "=",
     ]
 
 
-# Mapping of HW requirement operators to their Beaker representation.
-OPERATOR_SIGN_TO_OPERATOR = {
-    tmt.hardware.Operator.EQ: '==',
-    tmt.hardware.Operator.NEQ: '!=',
-    tmt.hardware.Operator.GT: '>',
-    tmt.hardware.Operator.GTE: '>=',
-    tmt.hardware.Operator.LT: '<',
-    tmt.hardware.Operator.LTE: '<=',
-    }
-
-
-def operator_to_beaker_op(operator: tmt.hardware.Operator, value: str) -> tuple[str, str, bool]:
+def import_and_load_mrack_deps(workdir: Any, name: str) -> None:
     """
-    Convert constraint operator to Beaker "op".
+    Import mrack module only when needed
 
-    :param operator: operator to convert.
-    :param value: value operator works with. It shall be a string representation
-        of the the constraint value, as converted for the Beaker job XML.
-    :returns: tuple of three items: Beaker operator, fit for ``op`` attribute
-        of XML filters, a value to go with it instead of the input one, and
-        a boolean signalizing whether the filter, constructed by the caller,
-        should be negated.
+    Until we have a separate package for each plugin.
     """
-
-    if operator in OPERATOR_SIGN_TO_OPERATOR:
-        return OPERATOR_SIGN_TO_OPERATOR[operator], value, False
-
-    # MATCH has special handling - convert the pattern to a wildcard form -
-    # and that may be weird :/
-    if operator == tmt.hardware.Operator.MATCH:
-        return 'like', value.replace('.*', '%').replace('.+', '%'), False
-
-    if operator == tmt.hardware.Operator.NOTMATCH:
-        return 'like', value.replace('.*', '%').replace('.+', '%'), True
-
-    raise ProvisionError(f"Hardware requirement operator '{operator}' is not supported.")
-
-
-# Transcription of our HW constraints into Mrack's own representation. It's based
-# on dictionaries, and it's slightly weird. There is no distinction between elements
-# that do not have attributes, like <and/>, and elements that must have them, like
-# <memory/> and other binary operations. Also, there is no distinction betwen
-# element attribute and child element, both are specified as dictionary key, just
-# the former would be a string, the latter another, nested, dictionary.
-#
-# This makes it harder for us to enforce correct structure of the transcribed tree.
-# Therefore adding a thin layer of containers that describe what Mrack is willing
-# to accept, but with strict type annotations; the layer is aware of how to convert
-# its components into dictionaries.
-@dataclasses.dataclass
-class MrackBaseHWElement:
-    """ Base for Mrack hardware requirement elements """
-
-    # Only a name is defined, as it's the only property shared across all element
-    # types.
-    name: str
-
-    def to_mrack(self) -> dict[str, Any]:
-        """ Convert the element to Mrack-compatible dictionary tree """
-        raise NotImplementedError
-
-
-@dataclasses.dataclass
-class MrackHWElement(MrackBaseHWElement):
-    """
-    An element with name and attributes.
-
-    This type of element is not allowed to have any child elements.
-    """
-
-    attributes: dict[str, str] = dataclasses.field(default_factory=dict)
-
-    def to_mrack(self) -> dict[str, Any]:
-        return {
-            self.name: self.attributes
-            }
-
-
-@dataclasses.dataclass(init=False)
-class MrackHWBinOp(MrackHWElement):
-    """ An element describing a binary operation, a "check" """
-
-    def __init__(self, name: str, operator: str, value: str) -> None:
-        super().__init__(name)
-
-        self.attributes = {
-            '_op': operator,
-            '_value': value
-            }
-
-
-@dataclasses.dataclass(init=False)
-class MrackHWKeyValue(MrackHWElement):
-    """ A key-value element """
-
-    def __init__(self, name: str, operator: str, value: str) -> None:
-        super().__init__('key_value')
-
-        self.attributes = {
-            '_key': name,
-            '_op': operator,
-            '_value': value
-            }
-
-
-@dataclasses.dataclass
-class MrackHWGroup(MrackBaseHWElement):
-    """
-    An element with child elements.
-
-    This type of element is not allowed to have any attributes.
-    """
-
-    children: list[MrackBaseHWElement] = dataclasses.field(default_factory=list)
-
-    def to_mrack(self) -> dict[str, Any]:
-        # Another unexpected behavior of mrack dictionary tree: if there is just
-        # a single child, it is "packed" into its parent as a key/dict item.
-        if len(self.children) == 1 and self.name not in ('and', 'or'):
-            return {
-                self.name: self.children[0].to_mrack()
-                }
-
-        return {
-            self.name: [child.to_mrack() for child in self.children]
-            }
-
-
-@dataclasses.dataclass
-class MrackHWAndGroup(MrackHWGroup):
-    """ Represents ``<and/>`` element """
-
-    name: str = 'and'
-
-
-@dataclasses.dataclass
-class MrackHWOrGroup(MrackHWGroup):
-    """ Represents ``<or/>`` element """
-
-    name: str = 'or'
-
-
-@dataclasses.dataclass
-class MrackHWNotGroup(MrackHWGroup):
-    """ Represents ``<not/>`` element """
-
-    name: str = 'not'
-
-
-def _transform_unsupported(
-        constraint: tmt.hardware.Constraint[Any],
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    # Unsupported constraint has been already logged via report_support(). Make
-    # sure user is aware it would have no effect, and since we have to return
-    # something, return an empty `or` group - no harm done, composable with other
-    # elements.
-    logger.warn(f"Hardware requirement '{constraint.printable_name}' will have no effect.")
-
-    return MrackHWOrGroup()
-
-
-def _transform_cpu_flag(
-        constraint: tmt.hardware.TextConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator = OPERATOR_SIGN_TO_OPERATOR[tmt.hardware.Operator.EQ] \
-        if constraint.operator is tmt.hardware.Operator.CONTAINS \
-        else OPERATOR_SIGN_TO_OPERATOR[tmt.hardware.Operator.NEQ]
-    actual_value = str(constraint.value)
-
-    return MrackHWGroup(
-        'cpu',
-        children=[MrackHWBinOp('flag', beaker_operator, actual_value)]
-        )
-
-
-def _transform_cpu_model(
-        constraint: tmt.hardware.NumberConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, _ = operator_to_beaker_op(
-        constraint.operator,
-        str(constraint.value))
-
-    return MrackHWGroup(
-        'cpu',
-        children=[MrackHWBinOp('model', beaker_operator, actual_value)])
-
-
-def _transform_cpu_processors(
-        constraint: tmt.hardware.NumberConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, _ = operator_to_beaker_op(
-        constraint.operator,
-        str(constraint.value))
-
-    return MrackHWGroup(
-        'cpu',
-        children=[MrackHWBinOp('cpu_count', beaker_operator, actual_value)])
-
-
-def _transform_disk_driver(
-        constraint: tmt.hardware.TextConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, negate = operator_to_beaker_op(
-        constraint.operator,
-        constraint.value)
-
-    if negate:
-        return MrackHWNotGroup(children=[
-            MrackHWKeyValue('BOOTDISK', beaker_operator, actual_value)
-            ])
-
-    return MrackHWKeyValue(
-        'BOOTDISK',
-        beaker_operator,
-        actual_value)
-
-
-def _transform_disk_size(
-        constraint: tmt.hardware.SizeConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, _ = operator_to_beaker_op(
-        constraint.operator,
-        str(int(constraint.value.to('B').magnitude))
-        )
-
-    return MrackHWGroup(
-        'disk',
-        children=[MrackHWBinOp('size', beaker_operator, actual_value)])
-
-
-def _transform_disk_model_name(
-        constraint: tmt.hardware.TextConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, negate = operator_to_beaker_op(
-        constraint.operator,
-        constraint.value)
-
-    if negate:
-        return MrackHWNotGroup(children=[
-            MrackHWGroup(
-                'disk',
-                children=[MrackHWBinOp('model', beaker_operator, actual_value)])])
-
-    return MrackHWGroup(
-        'disk',
-        children=[MrackHWBinOp('model', beaker_operator, actual_value)])
-
-
-def _transform_hostname(
-        constraint: tmt.hardware.TextConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, negate = operator_to_beaker_op(
-        constraint.operator,
-        constraint.value)
-
-    if negate:
-        return MrackHWNotGroup(children=[
-            MrackHWBinOp('hostname', beaker_operator, actual_value)
-            ])
-
-    return MrackHWBinOp(
-        'hostname',
-        beaker_operator,
-        actual_value)
-
-
-def _transform_memory(
-        constraint: tmt.hardware.SizeConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-
-    beaker_operator, actual_value, _ = operator_to_beaker_op(
-        constraint.operator,
-        str(int(constraint.value.to('MiB').magnitude)))
-
-    return MrackHWGroup(
-        'system',
-        children=[MrackHWBinOp('memory', beaker_operator, actual_value)])
-
-
-def _transform_virtualization_is_virtualized(
-        constraint: tmt.hardware.FlagConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, _ = operator_to_beaker_op(
-        constraint.operator,
-        str(constraint.value))
-
-    test = (constraint.operator, constraint.value)
-
-    if test in [(tmt.hardware.Operator.EQ, True), (tmt.hardware.Operator.NEQ, False)]:
-        return MrackHWGroup(
-            'system',
-            children=[MrackHWBinOp('hypervisor', '!=', '')])
-
-    if test in [(tmt.hardware.Operator.EQ, False), (tmt.hardware.Operator.NEQ, True)]:
-        return MrackHWGroup(
-            'system',
-            children=[MrackHWBinOp('hypervisor', '==', '')])
-
-    return _transform_unsupported(constraint, logger)
-
-
-def _transform_zcrypt_adapter(
-        constraint: tmt.hardware.TextConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, negate = operator_to_beaker_op(
-        constraint.operator,
-        constraint.value)
-
-    if negate:
-        return MrackHWNotGroup(children=[
-            MrackHWGroup(
-                'system',
-                children=[MrackHWKeyValue('ZCRYPT_MODEL', beaker_operator, actual_value)])])
-
-    return MrackHWGroup(
-        'system',
-        children=[MrackHWKeyValue('ZCRYPT_MODEL', beaker_operator, actual_value)])
-
-
-def _transform_zcrypt_mode(
-        constraint: tmt.hardware.TextConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    beaker_operator, actual_value, negate = operator_to_beaker_op(
-        constraint.operator,
-        constraint.value)
-
-    if negate:
-        return MrackHWNotGroup(children=[
-            MrackHWGroup(
-                'system',
-                children=[MrackHWKeyValue('ZCRYPT_MODE', beaker_operator, actual_value)])])
-
-    return MrackHWGroup(
-        'system',
-        children=[MrackHWKeyValue('ZCRYPT_MODE', beaker_operator, actual_value)])
-
-
-ConstraintTransformer = Callable[[
-    tmt.hardware.Constraint[Any], tmt.log.Logger], MrackBaseHWElement]
-
-_CONSTRAINT_TRANSFORMERS: Mapping[str, ConstraintTransformer] = {
-    'cpu.flag': _transform_cpu_flag,  # type: ignore[dict-item]
-    'cpu.model': _transform_cpu_model,  # type: ignore[dict-item]
-    'cpu.processors': _transform_cpu_processors,  # type: ignore[dict-item]
-    'disk.driver': _transform_disk_driver,  # type: ignore[dict-item]
-    'disk.model_name': _transform_disk_model_name,  # type: ignore[dict-item]
-    'disk.size': _transform_disk_size,  # type: ignore[dict-item]
-    'hostname': _transform_hostname,  # type: ignore[dict-item]
-    'memory': _transform_memory,  # type: ignore[dict-item]
-    'virtualization.is_virtualized': \
-    _transform_virtualization_is_virtualized,  # type: ignore[dict-item]
-    'zcrypt.adapter': _transform_zcrypt_adapter,  # type: ignore[dict-item]
-    'zcrypt.mode': _transform_zcrypt_mode,  # type: ignore[dict-item]
-    }
-
-
-def constraint_to_beaker_filter(
-        constraint: tmt.hardware.BaseConstraint,
-        logger: tmt.log.Logger) -> MrackBaseHWElement:
-    """ Convert a hardware constraint into a Mrack-compatible filter """
-
-    if isinstance(constraint, tmt.hardware.And):
-        return MrackHWAndGroup(
-            children=[
-                constraint_to_beaker_filter(child_constraint, logger)
-                for child_constraint in constraint.constraints
-                ]
-            )
-
-    if isinstance(constraint, tmt.hardware.Or):
-        return MrackHWOrGroup(
-            children=[
-                constraint_to_beaker_filter(child_constraint, logger)
-                for child_constraint in constraint.constraints
-                ]
-            )
-
-    assert isinstance(constraint, tmt.hardware.Constraint)
-
-    name, _, child_name = constraint.expand_name()
-
-    if child_name:
-        transformer = _CONSTRAINT_TRANSFORMERS.get(f'{name}.{child_name}')
-
-    else:
-        transformer = _CONSTRAINT_TRANSFORMERS.get(name)
-
-    if transformer:
-        return transformer(constraint, logger)
-
-    return _transform_unsupported(constraint, logger)
-
-
-def import_and_load_mrack_deps(workdir: Any, name: str, logger: tmt.log.Logger) -> None:
-    """ Import mrack module only when needed """
-    global _MRACK_IMPORTED
-
-    if _MRACK_IMPORTED:
-        return
-
     global mrack
     global providers
     global ProvisioningError
@@ -482,51 +92,124 @@ def import_and_load_mrack_deps(workdir: Any, name: str, logger: tmt.log.Logger) 
         # HAX remove mrack stdout and move the logfile to /tmp
         mrack.logger.removeHandler(mrack.console_handler)
         mrack.logger.removeHandler(mrack.file_handler)
-
-        with suppress(OSError):
+        if os.stat("mrack.log"):
             os.remove("mrack.log")
-
         logging.FileHandler(str(f"{workdir}/{name}-mrack.log"))
 
         providers.register(BEAKER, BeakerProvider)
 
     except ImportError:
-        raise ProvisionError(
-            "Install 'tmt+provision-beaker' to provision using this method.")
+        raise ProvisionError("Install 'mrack' to provision using this method.")
 
     # ignore the misc because mrack sources are not typed and result into
     # error: Class cannot subclass "BeakerTransformer" (has type "Any")
     # as mypy does not have type information for the BeakerTransformer class
     class TmtBeakerTransformer(BeakerTransformer):  # type: ignore[misc]
-        def _translate_tmt_hw(self, hw: tmt.hardware.Hardware) -> dict[str, Any]:
+        def _parse_amount(self, in_string: str) -> Tuple[str, int]:
+            """ Return amount from given string """
+            result = []
+            amount = ""
+
+            for op in operators:
+                parts = in_string.split(op, maxsplit=1)
+                if len(parts) != 2:
+                    continue
+
+                if parts[0]:
+                    continue
+
+                if any([op in parts[1] for op in op]):
+                    continue
+
+                result.append(op)
+                amount = parts[1]
+                break
+
+            assert len(result) == 1
+            assert len(amount) >= 1
+
+            for size, multiplier in size_translation.items():
+                if size not in amount:
+                    continue
+
+                result.append(str(multiplier * int(amount.split(size, maxsplit=1)[0])))
+                break
+
+            # returns operator, amount
+            return result[0], int(result[1])
+
+        def _translate_tmt_hw(self, hw: Dict[str, Any]) -> Dict[str, Any]:
             """ Return hw requirements from given hw dictionary """
+            key = "_key"
+            value = "_value"
+            op = "_op"
 
-            assert hw.constraint
+            system = {}
+            disks = []
+            cpu = {}
 
-            transformed = MrackHWAndGroup(
-                children=[
-                    constraint_to_beaker_filter(constraint, logger)
-                    for constraint in hw.constraint.variant()
-                    ])
+            for key, val in hw.items():
+                if key == "memory":
+                    operator, amount = self._parse_amount(val)
+                    system.update({
+                        key: {
+                            value: amount,
+                            op: operator
+                            }
+                        })
+                if key == "disk":
+                    for dsk in val:
+                        operator, disk = self._parse_amount(dsk["size"])
+                        disks.append({
+                            "disk": {
+                                "size": {
+                                    value: disk,
+                                    op: operator,
+                                    }
+                                }
+                            })
+                if key == "cpu":
+                    if val.get("processors"):
+                        cpu.update({
+                            "cpu_count": {
+                                value: val["processors"],
+                                op: "=",
+                                }
+                            })
+                    if val.get("model"):
+                        cpu.update({
+                            "model": {
+                                value: val["model"],
+                                op: "=",
+                                }
+                            })
 
-            logger.debug('Transformed hardware', tmt.utils.dict_to_yaml(transformed.to_mrack()))
+            and_req = []
+            for rec in [system, disks, cpu]:
+                if not rec:
+                    continue
+                if isinstance(rec, dict):
+                    and_req.append(rec)
+                if isinstance(rec, list):
+                    and_req += rec
 
-            return {
-                'hostRequires': transformed.to_mrack()
-                }
+            host_req = {}
+            if and_req:
+                host_req = {
+                    "hostRequires": {
+                        "and": and_req
+                        }
+                    }
 
-        def create_host_requirement(self, host: dict[str, Any]) -> dict[str, Any]:
+            return host_req
+
+        def create_host_requirement(self, host: Dict[str, Any]) -> Dict[str, Any]:
             """ Create single input for Beaker provisioner """
-            hardware = cast(Optional[tmt.hardware.Hardware], host.get('hardware'))
-            if hardware and hardware.constraint:
-                host.update({"beaker": self._translate_tmt_hw(hardware)})
-            req: dict[str, Any] = super().create_host_requirement(host)
-            whiteboard = host.get("whiteboard", host.get("tmt_name", req.get("whiteboard")))
-            req.update({"whiteboard": whiteboard})
-            logger.info('whiteboard', whiteboard, 'green')
+            mrack_req: Dict[str, Any] = self._translate_tmt_hw(host.get("hardware", {}))
+            host.update({"beaker": mrack_req})
+            req: Dict[str, Any] = super().create_host_requirement(host)
+            req.update({"whiteboard": host.get("tmt_name", req.get("whiteboard"))})
             return req
-
-    _MRACK_IMPORTED = True
 
 
 def async_run(func: Any) -> Any:
@@ -541,61 +224,19 @@ def async_run(func: Any) -> Any:
 @dataclasses.dataclass
 class BeakerGuestData(tmt.steps.provision.GuestSshData):
     # Override parent class with our defaults
-    user: str = field(
-        default=DEFAULT_USER,
-        option=('-u', '--user'),
-        metavar='USERNAME',
-        help='Username to use for all guest operations.')
+    user: str = DEFAULT_USER
 
     # Guest request properties
-    whiteboard: Optional[str] = field(
-        default=None,
-        option=('-w', '--whiteboard'),
-        metavar='WHITEBOARD',
-        help='Text description of the beaker job which is displayed in the list of jobs.'
-        )
-    arch: str = field(
-        default=DEFAULT_ARCH,
-        option='--arch',
-        metavar='ARCH',
-        help='Architecture to provision.')
-    image: Optional[str] = field(
-        default=DEFAULT_IMAGE,
-        option=('-i', '--image'),
-        metavar='COMPOSE',
-        help='Image (distro or "compose" in Beaker terminology) to provision.')
+    arch: str = DEFAULT_ARCH
+    image: Optional[str] = "fedora"
+    hardware: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Provided in Beaker job
     job_id: Optional[str] = None
 
     # Timeouts and deadlines
-    provision_timeout: int = field(
-        default=DEFAULT_PROVISION_TIMEOUT,
-        option='--provision-timeout',
-        metavar='SECONDS',
-        help=f"""
-             How long to wait for provisioning to complete,
-             {DEFAULT_PROVISION_TIMEOUT} seconds by default.
-             """,
-        normalize=tmt.utils.normalize_int)
-    provision_tick: int = field(
-        default=DEFAULT_PROVISION_TICK,
-        option='--provision-tick',
-        metavar='SECONDS',
-        help=f"""
-             How often check Beaker for provisioning status,
-             {DEFAULT_PROVISION_TICK} seconds by default.
-             """,
-        normalize=tmt.utils.normalize_int)
-    api_session_refresh_tick: int = field(
-        default=DEFAULT_API_SESSION_REFRESH,
-        option='--api-session-refresh-tick',
-        metavar='SECONDS',
-        help=f"""
-             How often should Beaker session be refreshed to pick up-to-date Kerberos ticket,
-             {DEFAULT_API_SESSION_REFRESH} seconds by default.
-             """,
-        normalize=tmt.utils.normalize_int)
+    provision_timeout: int = DEFAULT_PROVISION_TIMEOUT
+    provision_tick: int = DEFAULT_PROVISION_TICK
 
 
 @dataclasses.dataclass
@@ -622,7 +263,7 @@ GUEST_STATE_COLORS = {
 
 class BeakerAPI:
     # req is a requirement passed to Beaker mrack provisioner
-    mrack_requirement: dict[str, Any] = {}
+    mrack_requirement: Dict[str, Any] = {}
     dsp_name: str = "Beaker"
 
     # wrapping around the __init__ with async wrapper does mangle the method
@@ -676,13 +317,10 @@ class BeakerAPI:
         self._mrack_provider = self._mrack_transformer._provider
         self._mrack_provider.poll_sleep = DEFAULT_PROVISION_TICK
 
-        if guest.job_id:
-            self._bkr_job_id = guest.job_id
-
     @async_run
     async def create(
             self,
-            data: dict[str, Any],
+            data: Dict[str, Any],
             ) -> Any:
         """
         Create - or request creation of - a resource using mrack up.
@@ -711,15 +349,14 @@ class BeakerAPI:
         return await self._mrack_provider.delete_host(self._bkr_job_id, None)
 
 
-class GuestBeaker(tmt.steps.provision.GuestSsh):
+class GuestBeaker(tmt.GuestSsh):
     """ Beaker guest instance """
     _data_class = BeakerGuestData
 
     # Guest request properties
-    whiteboard: Optional[str]
     arch: str
     image: str = "fedora-latest"
-    hardware: Optional[tmt.hardware.Hardware] = None
+    hardware: Dict[str, Any] = {}
 
     # Provided in Beaker response
     job_id: Optional[str]
@@ -727,34 +364,13 @@ class GuestBeaker(tmt.steps.provision.GuestSsh):
     # Timeouts and deadlines
     provision_timeout: int
     provision_tick: int
-    api_session_refresh_tick: int
-
     _api: Optional[BeakerAPI] = None
-    _api_timestamp: Optional[datetime.datetime] = None
 
     @property
     def api(self) -> BeakerAPI:
         """ Create BeakerAPI leveraging mrack """
-
-        def _construct_api() -> tuple[BeakerAPI, datetime.datetime]:
-            assert self.parent is not None
-
-            import_and_load_mrack_deps(self.parent.workdir, self.parent.name, self._logger)
-
-            return BeakerAPI(self), datetime.datetime.now(datetime.timezone.utc)
-
         if self._api is None:
-            self._api, self._api_timestamp = _construct_api()
-
-        else:
-            assert self._api_timestamp is not None
-
-            delta = datetime.datetime.now(datetime.timezone.utc) - self._api_timestamp
-
-            if delta.total_seconds() >= self.api_session_refresh_tick:
-                self.debug(f'Refresh Beaker API client as it is too old, {delta}.')
-
-                self._api, self._api_timestamp = _construct_api()
+            self._api = BeakerAPI(self)
 
         return self._api
 
@@ -779,7 +395,8 @@ class GuestBeaker(tmt.steps.provision.GuestSsh):
 
             if state == 'Reserved':
                 return True
-            return False
+            else:
+                return False
 
         except mrack.errors.MrackError:
             return False
@@ -787,16 +404,13 @@ class GuestBeaker(tmt.steps.provision.GuestSsh):
     def _create(self, tmt_name: str) -> None:
         """ Create beaker job xml request and submit it to Beaker hub """
 
-        data: dict[str, Any] = {
+        data: Dict[str, Any] = {
             'tmt_name': tmt_name,
             'hardware': self.hardware,
             'name': f'{self.image}-{self.arch}',
             'os': self.image,
             'group': 'linux',
             }
-
-        if self.whiteboard is not None:
-            data["whiteboard"] = self.whiteboard
 
         if self.arch is not None:
             data["arch"] = self.arch
@@ -814,10 +428,11 @@ class GuestBeaker(tmt.steps.provision.GuestSsh):
             raise ProvisionError(
                 f"Failed to create, response: '{response}'.")
 
-        self.job_id = f'J:{response["id"]}'
+        self.job_id = response["id"] if not response["system"] else response["system"]
         self.info('job id', self.job_id, 'green')
 
-        with UpdatableMessage("status", indent_level=self._level()) as progress_message:
+        with updatable_message(
+                "status", indent_level=self._level()) as progress_message:
 
             def get_new_state() -> GuestInspectType:
                 response = self.api.inspect()
@@ -844,7 +459,7 @@ class GuestBeaker(tmt.steps.provision.GuestSsh):
                 if state == 'Reserved':
                     return current
 
-                raise tmt.utils.WaitingIncompleteError
+                raise tmt.utils.WaitingIncomplete()
 
             try:
                 guest_info = tmt.utils.wait(
@@ -860,7 +475,8 @@ class GuestBeaker(tmt.steps.provision.GuestSsh):
                     f'of time (--provision-timeout={self.provision_timeout}).'
                     )
 
-        self.primary_address = self.topology_address = guest_info['system']
+        self.guest = guest_info['system']
+        self.info('address', self.guest, 'green')
 
     def start(self) -> None:
         """
@@ -871,11 +487,8 @@ class GuestBeaker(tmt.steps.provision.GuestSsh):
         load() is completed so all guest data should be available.
         """
 
-        if self.job_id is None or self.primary_address is None:
+        if self.job_id is None or self.guest is None:
             self._create(self._tmt_name())
-
-        self.verbose('primary address', self.primary_address, 'green')
-        self.verbose('topology address', self.topology_address, 'green')
 
     def stop(self) -> None:
         """ Stop the guest """
@@ -890,59 +503,13 @@ class GuestBeaker(tmt.steps.provision.GuestSsh):
 
         self.api.delete()
 
-    def reboot(
-            self,
-            hard: bool = False,
-            command: Optional[Union[Command, ShellScript]] = None,
-            timeout: Optional[int] = None,
-            tick: float = tmt.utils.DEFAULT_WAIT_TICK,
-            tick_increase: float = tmt.utils.DEFAULT_WAIT_TICK_INCREASE) -> bool:
-        """
-        Reboot the guest, and wait for the guest to recover.
-
-        :param hard: if set, force the reboot. This may result in a loss of
-            data. The default of ``False`` will attempt a graceful reboot.
-        :param command: a command to run on the guest to trigger the reboot.
-            If not set, plugin would try to use ``bkr system-power`` for hard
-            reboot. Unlike ``command``, this would be executed on the runner,
-            **not** on the guest.
-        :param timeout: amount of time in which the guest must become available
-            again.
-        :param tick: how many seconds to wait between two consecutive attempts
-            of contacting the guest.
-        :param tick_increase: a multiplier applied to ``tick`` after every
-            attempt.
-        :returns: ``True`` if the reboot succeeded, ``False`` otherwise.
-        """
-
-        if not command and hard:
-            self.debug("Reboot using the reboot command 'bkr system-power --action reboot'.")
-
-            reboot_script = ShellScript(f'bkr system-power --action reboot {self.primary_address}')
-
-            return self.perform_reboot(
-                lambda: self._run_guest_command(reboot_script.to_shell_command()),
-                timeout=timeout,
-                tick=tick,
-                tick_increase=tick_increase,
-                hard=True)
-
-        return super().reboot(
-            hard=hard,
-            command=command,
-            timeout=timeout,
-            tick=tick,
-            tick_increase=tick_increase)
-
 
 @tmt.steps.provides_method('beaker')
-class ProvisionBeaker(tmt.steps.provision.ProvisionPlugin[ProvisionBeakerData]):
+class ProvisionBeaker(tmt.steps.provision.ProvisionPlugin):
     """
-    Provision guest on Beaker system using mrack.
+    Provision guest on Beaker system using mrack
 
     Minimal configuration could look like this:
-
-    .. code-block:: yaml
 
         provision:
             how: beaker
@@ -953,10 +520,33 @@ class ProvisionBeaker(tmt.steps.provision.ProvisionPlugin[ProvisionBeakerData]):
     _data_class = ProvisionBeakerData
     _guest_class = GuestBeaker
 
-    # _thread_safe = True
-
     # Guest instance
     _guest = None
+
+    @classmethod
+    def options(cls, how: Optional[str] = None) -> List[tmt.options.ClickOptionDecoratorType]:
+        """ Prepare command line options for Beaker """
+        return [
+            click.option(
+                '--arch', metavar='ARCH',
+                help='Architecture to provision.'
+                ),
+            click.option(
+                '--image', metavar='COMPOSE',
+                help='Image (distro or "compose" in Beaker terminology) '
+                     'to provision.'
+                ),
+            click.option(
+                '--provision-timeout', metavar='SECONDS',
+                help=f'How long to wait for provisioning to complete, '
+                     f'{DEFAULT_PROVISION_TIMEOUT} seconds by default.'
+                ),
+            click.option(
+                '--provision-tick', metavar='SECONDS',
+                help=f'How often check Beaker for provisioning status, '
+                     f'{DEFAULT_PROVISION_TICK} seconds by default.',
+                ),
+            ] + super().options(how)
 
     # data argument should be a "Optional[GuestData]" type but we would like to use
     # BeakerGuestData created here ignoring the override will make mypy calm
@@ -974,16 +564,18 @@ class ProvisionBeaker(tmt.steps.provision.ProvisionPlugin[ProvisionBeakerData]):
 
     def go(self) -> None:
         """ Provision the guest """
+        import_and_load_mrack_deps(self.workdir, self.name)
+
         super().go()
 
-        data = BeakerGuestData.from_plugin(self)
-
-        data.show(verbose=self.verbosity_level, logger=self._logger)
-
-        if data.hardware:
-            data.hardware.report_support(
-                names=SUPPORTED_HARDWARE_CONSTRAINTS,
-                logger=self._logger)
+        data = BeakerGuestData(
+            arch=self.get('arch'),
+            image=self.get('image'),
+            hardware=self.get('hardware'),
+            user=self.get('user'),
+            provision_timeout=self.get('provision-timeout'),
+            provision_tick=self.get('provision-tick'),
+            )
 
         self._guest = GuestBeaker(
             data=data,
@@ -992,7 +584,6 @@ class ProvisionBeaker(tmt.steps.provision.ProvisionPlugin[ProvisionBeakerData]):
             logger=self._logger,
             )
         self._guest.start()
-        self._guest.setup()
 
     def guest(self) -> Optional[GuestBeaker]:
         """ Return the provisioned guest """

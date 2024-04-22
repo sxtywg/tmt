@@ -12,11 +12,7 @@
     duration: 5s
 
     /shell:
-        test: sleep 20s
+        test: sleep 120s
     /beakerlib:
         framework: beakerlib
         test: ./long.sh
-
-adjust:
-  - when: tty == true
-    tty: true

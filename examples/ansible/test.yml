@@ -1,11 +1,8 @@
-- name: A simple test
-  hosts: localhost
+- hosts: localhost
   tasks:
     - name: Create a simple test file
-      ansible.builtin.copy:
+      copy:
         dest: /tmp/prepared
         content: pass
-        mode: preserve
     - name: Check the file content
-      ansible.builtin.command: grep pass /tmp/prepared
-      changed_when: false
+      shell: grep pass /tmp/prepared

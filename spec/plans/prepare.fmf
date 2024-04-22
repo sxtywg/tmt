@@ -17,8 +17,7 @@ description: |
     Default order is ``50``. For installation of required packages
     gathered from the :ref:`/spec/tests/require` attribute of
     individual tests order ``70`` is used, for recommended
-    packages it is ``75``. The Dist-git prepare happens before those,
-    with order ``60``.
+    packages it is ``75``.
 
     .. note::
 
@@ -32,7 +31,7 @@ example: |
     prepare:
       - how: install
         copr: psss/tmt
-        package: tmt+all
+        package: tmt-all
 
     # Install required packages and start the service
     prepare:
@@ -87,25 +86,6 @@ example: |
       - implemented-by: /tmt/steps/provision
       - verified-by: /tests/prepare/ansible
 
-/feature:
-    summary:
-        Easily enable and disable common features
-    description: |
-        The ``feature`` plugin provides a comfortable way to
-        enable and disable some commonly used functionality. As
-        for now enabling and disabling the ``epel`` repository is
-        supported, ``crb`` and ``fips`` are coming in the near
-        future.
-
-        .. versionadded:: 1.31
-    example: |
-        prepare:
-            how: feature
-            epel: enabled
-    link:
-      - implemented-by: /tmt/steps/prepare/feature
-      - verified-by: /tests/prepare/feature
-
 /install:
     summary:
         Install packages on the guest
@@ -151,15 +131,13 @@ example: |
             directory:
               - tmp/RPMS/noarch
             exclude:
-              - tmt+all
-              - tmt+provision-virtual
+              - tmt-all
+              - tmt-provision-virtual
 
       - |
         # Enable copr repository, skip missing packages
         prepare:
             how: install
-            # Repository with a group owner (@ prefixed) requires quotes, e.g.
-            # copr: "@osci/rpminspect"
             copr: psss/tmt
             package: tmt-all
             missing: skip
@@ -191,9 +169,3 @@ example: |
           - how: ansible
             playbook: common.yaml
             where: [primary, replica]
-    link:
-      - implemented-by: /tmt/steps
-      - verified-by: /tests/multihost/complete
-      - verified-by: /tests/multihost/web
-      - verified-by: /tests/multihost/corner-cases
-      - documented-by: /docs/guide.rst

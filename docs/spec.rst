@@ -54,4 +54,3 @@ Level 3: Stories
     spec/stories
     spec/context
     spec/hardware
-    spec/lint

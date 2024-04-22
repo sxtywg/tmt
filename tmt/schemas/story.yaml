@@ -18,10 +18,6 @@ properties:
   adjust:
     $ref: "/schemas/core#/definitions/adjust"
 
-  # https://tmt.readthedocs.io/en/stable/spec/core.html#contact
-  contact:
-    $ref: "/schemas/core#/definitions/contact"
-
   # https://tmt.readthedocs.io/en/stable/spec/core.html#description
   description:
     $ref: "/schemas/core#/definitions/description"
@@ -47,6 +43,7 @@ properties:
     $ref: "/schemas/core#/definitions/order"
 
   # https://tmt.readthedocs.io/en/stable/spec/stories.html#priority
+  # TODO: might need update once #440 is merged
   priority:
     type: string
     enum:

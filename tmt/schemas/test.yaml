@@ -22,9 +22,9 @@ properties:
   component:
     $ref: "/schemas/common#/definitions/one_or_more_strings"
 
-  # https://tmt.readthedocs.io/en/stable/spec/core.html#contact
+  # https://tmt.readthedocs.io/en/stable/spec/tests.html#contact
   contact:
-    $ref: "/schemas/core#/definitions/contact"
+    $ref: "/schemas/common#/definitions/one_or_more_strings"
 
   # https://tmt.readthedocs.io/en/stable/spec/core.html#description
   description:
@@ -51,17 +51,6 @@ properties:
       - beakerlib
       - shell
 
-  # https://tmt.readthedocs.io/en/stable/spec/tests.html#check
-  check:
-    anyOf:
-      - type: string
-      - $ref: "/schemas/common#/definitions/check"
-      - type: array
-        items:
-          anyOf:
-            - type: string
-            - $ref: "/schemas/common#/definitions/check"
-
   # https://tmt.readthedocs.io/en/stable/spec/core.html#id
   id:
     $ref: "/schemas/core#/definitions/id"
@@ -72,10 +61,6 @@ properties:
 
   # https://tmt.readthedocs.io/en/stable/spec/tests.html#manual
   manual:
-    type: boolean
-
-  # https://tmt.readthedocs.io/en/stable/spec/tests.html#tty
-  tty:
     type: boolean
 
   # https://tmt.readthedocs.io/en/stable/spec/core.html#order
@@ -96,13 +81,11 @@ properties:
     anyOf:
       - type: string
       - $ref: "/schemas/common#/definitions/beakerlib_library"
-      - $ref: "/schemas/common#/definitions/require_file"
       - type: array
         items:
           anyOf:
             - type: string
             - $ref: "/schemas/common#/definitions/beakerlib_library"
-            - $ref: "/schemas/common#/definitions/require_file"
 
   # https://tmt.readthedocs.io/en/stable/spec/tests.html#result
   result:

@@ -2,21 +2,6 @@
 
 . /usr/share/beakerlib/beakerlib.sh || exit 1
 
-
-function assert_internal_fields () {
-    log="$1"
-
-    # Make sure internal fields are not exposed
-    rlAssertNotGrep " _" $rlRun_LOG
-    rlAssertNotGrep "serial-number" $log
-    rlAssertNotGrep "data-path" $log
-    rlAssertNotGrep "return-code" $log
-    rlAssertNotGrep "start-time" $log
-    rlAssertNotGrep "end-time" $log
-    rlAssertNotGrep "real-duration" $log
-}
-
-
 rlJournalStart
     rlPhaseStartSetup
         rlRun "pushd data"
@@ -35,8 +20,6 @@ rlJournalStart
         rlPhaseStartTest "$cmd"
             rlRun -s "$cmd" 0 "Export test"
             rlAssertGrep "name: $tname" $rlRun_LOG
-
-            assert_internal_fields "$rlRun_LOG"
         rlPhaseEnd
 
         cmd="tmt tests export --how dict $tname"
@@ -44,14 +27,13 @@ rlJournalStart
             rlRun -s "$cmd" 0 "Export test"
             rlAssertGrep "'name': '$tname'" $rlRun_LOG
             rlAssertNotGrep "'_" $rlRun_LOG
-            assert_internal_fields "$rlRun_LOG"
         rlPhaseEnd
 
         cmd="tmt tests export --how yaml $tname"
         rlPhaseStartTest "$cmd"
             rlRun -s "$cmd" 0 "Export test"
             rlAssertGrep "name: $tname" $rlRun_LOG
-            assert_internal_fields "$rlRun_LOG"
+            rlAssertNotGrep " _" $rlRun_LOG
         rlPhaseEnd
     done
 
@@ -61,9 +43,9 @@ rlJournalStart
         if rlIsRHELLike "=8"; then
             # RHEL-8 and Centos stream 8 usually offer an older Click package that has slightly
             # different wording & quotes.
-            rlAssertgrep "Error: Invalid value for \"-h\" / \"--how\": invalid choice: weird. (choose from dict, json, nitrate, polarion, yaml)" $rlRun_LOG
+            rlAssertgrep "Error: Invalid value for \"-h\" / \"--how\": invalid choice: weird. (choose from dict, nitrate, polarion, yaml)" $rlRun_LOG
         else
-            rlAssertGrep "Error: Invalid value for '-h' / '--how': 'weird' is not one of 'dict', 'json', 'nitrate', 'polarion', 'template', 'yaml'." $rlRun_LOG
+            rlAssertGrep "Error: Invalid value for '-h' / '--how': 'weird' is not one of 'dict', 'nitrate', 'polarion', 'yaml'." $rlRun_LOG
         fi
     rlPhaseEnd
 

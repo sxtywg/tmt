@@ -1,34 +1,35 @@
-discover:
-  - name: server-setup
-    how: fmf
-    where: server
-    test: /test/server/setup
-
-  - name: client
-    how: fmf
-    where: client
-    test: /test/client
-
-  - name: server-cleanup
-    how: fmf
-    where: server
-    test: /test/server/cleanup
-
 provision:
-  - name: httpd-server
-    role: server
+  - name: server
     how: virtual
     connection: system
-
-  - name: wget-client
+  - name: client-one
+    how: virtual
     role: client
+    connection: system
+  - name: client-two
     how: virtual
     connection: system
-
-  - name: curl-client
     role: client
-    how: virtual
-    connection: system
+
+prepare:
+  - name: Install httpd
+    how: install
+    package: httpd
+    where: server
+  - name: Start the service
+    how: shell
+    script: systemctl start httpd
+    where: server
+  - name: Prepare page
+    how: shell
+    script: echo foo > /var/www/html/index.html
+    where: server
+
+  - name: Install curl
+    how: install
+    package: curl
+    where: client
 
 execute:
-    how: tmt
+    script: curl http://server/ | grep foo
+    where: client

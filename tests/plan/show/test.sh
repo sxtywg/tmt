@@ -67,21 +67,17 @@ rlJournalStart
 
         rlRun "git clone https://github.com/teemtee/tmt $local_repo"
         rlRun "pushd $local_repo"
-        # fmf id fields should be shown when under the default branch
+        # The ref should not be shown when under the default branch
         rlRun -s "tmt plan show $plan -vvv"
         dump_fmf_id_block $rlRun_LOG > $show_tmp
         rlRun "cat $show_tmp"
-        rlAssertGrep "url:" $show_tmp
-        rlAssertGrep "ref:" $show_tmp
-        rlAssertGrep "name:" $show_tmp
-        # fmf id fields should be shown when under a different branch, too
+        rlAssertNotGrep "ref:" $show_tmp
+        # The ref should be shown when under a different branch
         rlRun -s "git checkout -b another-branch"
         rlRun -s "tmt plan show $plan -vvv"
         dump_fmf_id_block $rlRun_LOG > $show_tmp
         rlRun "cat $show_tmp"
-        rlAssertGrep "url:" $show_tmp
         rlAssertGrep "ref: another-branch" $show_tmp
-        rlAssertGrep "name:" $show_tmp
         # Create a new worktree
         rlRun "git branch $ref"
         rlRun "git worktree add $worktree $ref"
@@ -91,9 +87,7 @@ rlJournalStart
         rlRun -s "tmt plan show $plan -vvv"
         dump_fmf_id_block $rlRun_LOG > $show_tmp
         rlRun "cat $show_tmp"
-        rlAssertGrep "url:" $show_tmp
         rlAssertGrep "ref:.*$ref" $show_tmp
-        rlAssertGrep "name:" $show_tmp
         rlRun "popd"
     rlPhaseEnd
 
@@ -109,7 +103,6 @@ rlJournalStart
         # Core
         rlAssertGrep "summary Plan keys are correctly displayed" $rlRun_LOG
         rlAssertGrep "description Some description" $rlRun_LOG
-        rlAssertGrep "contact Some Body <somebody@somewhere.org>" $rlRun_LOG
         rlAssertGrep "id e3a9a8ed-4585-4e86-80e8-1d99eb5345a9" $rlRun_LOG
         rlAssertGrep "enabled true" $rlRun_LOG
         rlAssertGrep "order 70" $rlRun_LOG
@@ -136,7 +129,7 @@ rlJournalStart
 
         # Extra
         rlAssertGrep "environment KEY: VAL" $rlRun_LOG
-        rlAssertGrep "context distro: fedora" $rlRun_LOG
+        rlAssertGrep "context distro: \['fedora'\]" $rlRun_LOG
     rlPhaseEnd
 
     rlPhaseStartTest "List all plans by default"
@@ -175,14 +168,6 @@ rlJournalStart
         rlAssertNotGrep "/plans/enabled" $rlRun_LOG
         rlAssertGrep "/plans/disabled" $rlRun_LOG
         rlAssertGrep "enabled false" $rlRun_LOG
-    rlPhaseEnd
-
-    rlPhaseStartTest "Show and honor envvars"
-        rlRun -s "tmt plan show /plans/envvars" 0 "Show plan"
-        rlAssertEquals "script shall be an envvar" "$(grep ' script ' $rlRun_LOG | awk '{print $2}')" "\$ENV_SCRIPT"
-
-        rlRun -s "tmt plan show -e ENV_SCRIPT=dummy-script /plans/envvars" 0 "Export plan"
-        rlAssertEquals "script shall be an replaced" "$(grep ' script ' $rlRun_LOG | awk '{print $2}')" "dummy-script"
     rlPhaseEnd
 
     rlPhaseStartCleanup

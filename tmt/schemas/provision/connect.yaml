@@ -28,9 +28,6 @@ properties:
   user:
     type: string
 
-  become:
-    type: boolean
-
   password:
     type: string
 
@@ -44,12 +41,6 @@ properties:
     type: integer
     minimum: 0
     maximum: 65535
-
-  soft-reboot:
-    type: string
-
-  hard-reboot:
-    type: string
 
 required:
   - how

@@ -1,5 +1,3 @@
-tier: 3
-
 /options:
     summary: Check that all supported options are present
     test: ./options.sh
@@ -13,6 +11,7 @@ tier: 3
     description:
         Make sure that all combinations of 'url', 'ref' and 'path'
         parameters work as expected.
+    tier: 2
     /fmf:
         test: ./references.sh
     /shell:
@@ -37,9 +36,11 @@ tier: 3
 /distgit:
     summary: Get tests from the source tarball from dist-git lookaside
     test: ./distgit.sh
-    tag+:
-    - provision-virtual
-    - provision-container
+    enabled: false
+    adjust:
+    - enabled: true
+      when: how == full or trigger == commit
+      tag+: [additional_coverage]
 
 /dynamic-ref:
     /fmf:
@@ -64,7 +65,3 @@ tier: 3
 /sanitize-metadata-name:
     summary: Test for plan/test name having control character
     test: ./sanitize-metadata-name.sh
-
-/pruning:
-    summary: Test pruning was done for tests
-    test: ./prune.sh

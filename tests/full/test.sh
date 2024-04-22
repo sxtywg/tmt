@@ -49,7 +49,6 @@ rlJournalStart
             # Better to install SOME tmt than none (python3-html2text missing on rhel-9)
             SKIP_BROKEN="--skip-broken"
         fi
-        rlRun "dnf update -y" 0 "Update all packages"
 
         rlFileBackup /etc/sudoers
         id $USER &>/dev/null && {
@@ -87,7 +86,7 @@ rlJournalStart
         [[ $PRE_RELEASE -ne 1 ]] && rlRun "sed 's/^Version:.*/Version: 9.9.9/' -i tmt.spec"
 
         # Build tmt packages
-        rlRun "make build-deps" 0 "Install build dependencies"
+        rlRun "dnf builddep -y tmt.spec" 0 "Install build dependencies"
         rlRun "make rpm" || rlDie "Failed to build tmt rpms"
 
         # After this we can use tmt (install freshly built rpms)
@@ -106,8 +105,6 @@ rlJournalStart
         # but make it work with podman run  registry.fedoraproject.org/fedora:latest
         rlRun "su -l -c 'podman run -itd --name fresh fedora' $USER"
         rlRun "su -l -c 'podman exec fresh dnf makecache' $USER"
-        # Install beakerlib as well, it is used a lot of times
-        rlRun "su -l -c 'podman exec fresh dnf install -y beakerlib' $USER"
         rlRun "su -l -c 'podman commit fresh fresh' $USER"
         rlRun "su -l -c 'podman container rm -f fresh' $USER"
         rlRun "su -l -c 'podman tag fresh registry.fedoraproject.org/fedora:latest' $USER"
@@ -115,9 +112,9 @@ rlJournalStart
 
         # Prepare fedora VM
         rlRun "su -l -c 'tmt run --rm plans --default provision -h virtual finish' $USER" 0 "Fetch image"
-        # Update metadata and install beakerlib into each image (should be a single one)
+        # Run dnf makecache in each image (should be single one though)
         for qcow in /var/tmp/tmt/testcloud/images/*qcow2; do
-            rlRun "virt-customize -a $qcow --run-command 'dnf --refresh install -y beakerlib'" 0 "Update metadata and install beakerlib"
+            rlRun "virt-customize -a $qcow --run-command 'dnf makecache'" 0 "pre-fetch dnf cache in the image"
         done
 
         # Some plans install tmt into provisioned guests however host might not be the same version
@@ -125,12 +122,12 @@ rlJournalStart
         rlRun -s "su -l -c 'podman run --rm fedora cat /etc/os-release | grep CPE_NAME=' $USER"
         image_cpe_name="$(cat $rlRun_LOG)"
 
-        if [[ "$image_cpe_name" != "$(grep CPE_NAME= /etc/os-release)" ]]; then
+        if [[ "$image_cpe_name" != "$(grep CPE_NAME= /etc/os_release)" ]]; then
             rlLog "Host OS differs from default image OS, compile new rpms"
             CONTAINER=BUILDER_$$
             rlRun "podman run --rm -v $USER_HOME/tmt:/tmp/tmt:Z -itd --name $CONTAINER fedora"
-            rlRun "podman exec $CONTAINER dnf install -y 'dnf-command(builddep)' make"
-            rlRun "podman exec -w /tmp/tmt $CONTAINER make build-deps"
+            rlRun "podman exec $CONTAINER dnf install -y 'dnf-command(builddep)' make rpm-build python3-docutils"
+            rlRun "podman exec -w /tmp/tmt $CONTAINER  dnf builddep -y tmt.spec"
             rlRun "podman exec -w /tmp/tmt $CONTAINER make rpm"
             rlRun "podman kill $CONTAINER"
         else
@@ -139,7 +136,7 @@ rlJournalStart
 
 
         rlRun "su -l -c 'tmt run --id $CONNECT_RUN plans --default provision -h virtual' $USER"
-        CONNECT_TO=$CONNECT_RUN/default/plan/provision/guests.yaml
+        CONNECT_TO=$CONNECT_RUN/plans/default/provision/guests.yaml
         rlAssertExists $CONNECT_TO
 
         # Create new plans/provision/connect.fmf
@@ -187,15 +184,13 @@ EOF
             rlRun "su -l -c 'cd $USER_HOME/tmt; NO_COLOR=1 tmt -c how=full plans ls --enabled $FILTER > $USER_HOME/enabled_plans' $USER"
             PLANS="$(echo $(cat $USER_HOME/enabled_plans))"
         fi
-
-        rlRun "chown -R $USER:$USER $USER_HOME" 0 "Make sure all files are readable by $USER"
     rlPhaseEnd
 
     for plan in $PLANS; do
         rlPhaseStartTest "Test: $plan"
             RUN="run$(echo $plan | tr '/' '-')"
             # Core of the test runs as $USER, -l should clear all BEAKER_envs.
-            rlRun "su -l -c 'cd $USER_HOME/tmt; TMT_TEST_PIDFILE_ROOT=/tmp tmt -c how=full run --id $USER_HOME/$RUN -vvv -a report -h html plans --name $plan $TEST_CMD' $USER"
+            rlRun "su -l -c 'cd $USER_HOME/tmt; tmt -c how=full run --id $USER_HOME/$RUN -vvv -a report -h html plans --name $plan $TEST_CMD' $USER"
 
             # Upload file so one can review ASAP
             rlRun "tar czf /tmp/$RUN.tgz  --exclude *.qcow2 $USER_HOME/$RUN"

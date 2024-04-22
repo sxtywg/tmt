@@ -27,9 +27,8 @@ rlJournalStart
     rlPhaseEnd
 
     rlPhaseStartTest "Bad dotenv format"
-        rlRun -s "tmt run -rvvvddd plan -n bad" 2
-        rlAssertGrep "Failed to extract variables from 'dotenv' format." $rlRun_LOG
-        rlAssertGrep "not enough values to unpack (expected 2, got 1)" $rlRun_LOG
+        rlRun "tmt run -rvvvddd plan -n bad 2>&1 | tee output" 2
+        rlAssertGrep "Failed to extract variables.*data/bad" 'output'
     rlPhaseEnd
 
     rlPhaseStartTest "Empty environment file"
@@ -38,19 +37,19 @@ rlJournalStart
     rlPhaseEnd
 
     rlPhaseStartTest "Escape from the tree"
-        rlRun -s "tmt run -rvvvddd plan -n escape" 2
-        rlAssertGrep "Failed to extract variables from file '/etc/secret' as it lies outside the metadata tree root '$(pwd)'." $rlRun_LOG
+        rlRun "tmt run -rvvvddd plan -n escape 2>&1 | tee output" 2
+        rlAssertGrep "path '/etc/secret' is outside" 'output'
     rlPhaseEnd
 
     rlPhaseStartTest "Fetch a remote file"
         # Good
-        rlRun -s "tmt plan show fetch/good"
-        rlAssertGrep "STR: O" $rlRun_LOG
-        rlAssertGrep "INT: 0"  $rlRun_LOG
+        rlRun "tmt plan show fetch/good | tee output"
+        rlAssertGrep "STR: O" 'output'
+        rlAssertGrep "INT: 0" 'output'
         # Bad
-        rlRun -s "tmt plan show fetch/bad" 2
-        rlAssertGrep "Failed to extract variables from URL '.*/tests/core/env/data/wrong.yaml'."  $rlRun_LOG -E
-        rlAssertGrep "404 Client Error: Not Found for url: .*/tests/core/env/data/wrong.yaml" $rlRun_LOG -E
+        rlRun "tmt plan show fetch/bad 2>&1 | tee output" 2
+        rlAssertGrep "Failed to fetch the environment file" 'output'
+        rlAssertGrep "Not Found" 'output'
     rlPhaseEnd
 
     rlPhaseStartCleanup

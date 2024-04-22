@@ -67,10 +67,10 @@ STORIES = itertools.chain.from_iterable(_iter_stories_in_tree(tree) for tree in 
 
 
 def validate_node(tree, node, schema, label, name):
-    errors = tmt.utils.validate_fmf_node(node, schema, LOGGER)
+    errors = tmt.utils.validate_fmf_node(node, schema)
 
     if errors:
-        print(f"""A node in tree loaded from {_tree_path(tree)!s} failed validation
+        print(f"""A node in tree loaded from {str(_tree_path(tree))} failed validation
 """)
 
         for error, message in errors:
@@ -81,7 +81,7 @@ Detailed validation error:
 {textwrap.indent(str(error), '  ')}
 """)
 
-        pytest.fail(f"{label} {name} fails validation")
+        assert False, f'{label} {name} fails validation'
 
 
 def _tree_path(tree):
@@ -114,12 +114,13 @@ def test_plans_schema(tree, plan):
 # Exercise the HW requirement schema with some interesting examples
 #
 @pytest.mark.parametrize(
-    'hw',
+    ('hw',),
     [
-        """
+        (
+            """
             ---
 
-            #arch: x86_64
+            arch: x86_64
             boot:
                 method: bios
             compatible:
@@ -156,11 +157,13 @@ def test_plans_schema(tree, plan):
                 is-virtualized: false
                 hypervisor: xen
             """,
-        """
+            ),
+        (
+            """
             ---
 
             and:
-              #- arch: x86_64
+              - arch: x86_64
               - cpu:
                   model-name: foo
               - memory: 8 GiB
@@ -169,7 +172,8 @@ def test_plans_schema(tree, plan):
                       is-supported: true
                   - virtualization:
                       is-supported: false
-            """
+            """,
+            )
         ],
     ids=[
         'all-requirements',
@@ -203,9 +207,10 @@ def test_hw_schema_examples(hw: str, request) -> None:
 # Exercise the KS requirement schema with some real examples
 #
 @pytest.mark.parametrize(
-    'ks',
+    ('ks',),
     [
-        """
+        (
+            """
             ---
 
             pre-install: |
@@ -226,7 +231,9 @@ def test_hw_schema_examples(hw: str, request) -> None:
                 "no-autopart harness=restraint"
             kernel-options: "ksdevice=eth1"
             kernel-options-post: "quiet"
-            """],
+            """,
+            ),
+        ],
     ids=[
         'all-properties',
         ]
@@ -251,28 +258,4 @@ def test_ks_schema_examples(ks: str, request) -> None:
         os.path.join('provision', 'artemis.yaml'),
         'Kickstart requirements',
         request.node.callspec.id
-        )
-
-
-def test_watchdog_specification() -> None:
-    tree = tmt.Tree(logger=LOGGER)
-
-    # Our user defined watchdog timeout values for artemis are supposed to be referenced
-    # from provision plugin schemas. Instead of cutting it out, we can use a provision
-    # plugin schema & prepare the fmf node correctly, to pretend it comes from `provision` step.
-    # The only required field is usually `how`.
-    node = fmf.Tree(
-        {
-            'how': 'artemis',
-            'watchdog-period-delay': 10,
-            'watchdog-dispatch-delay': 42,
-            }
-        )
-
-    validate_node(
-        tree,
-        node,
-        os.path.join('provision', 'artemis.yaml'),
-        'Watchdog specification',
-        'both-wd-options'
         )

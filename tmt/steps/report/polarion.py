@@ -1,15 +1,14 @@
 import dataclasses
 import datetime
-import os
+import xml.etree.ElementTree as ET
 from typing import Optional
-from xml.etree import ElementTree
 
 from requests import post
 
 import tmt
 import tmt.steps
 import tmt.steps.report
-from tmt.utils import Path, field
+from tmt.utils import field
 
 from .junit import make_junit_xml
 
@@ -18,18 +17,17 @@ DEFAULT_NAME = 'xunit.xml'
 
 @dataclasses.dataclass
 class ReportPolarionData(tmt.steps.report.ReportStepData):
-    file: Optional[Path] = field(
+    file: Optional[str] = field(
         default=None,
         option='--file',
         metavar='FILE',
-        help='Path to the file to store xUnit in.',
-        normalize=lambda key_address, raw_value, logger: Path(raw_value) if raw_value else None)
+        help='Path to the file to store xUnit in.'
+        )
 
     upload: bool = field(
         default=True,
         option=('--upload / --no-upload'),
         is_flag=True,
-        show_default=True,
         help="Whether to upload results to Polarion."
         )
 
@@ -37,159 +35,89 @@ class ReportPolarionData(tmt.steps.report.ReportStepData):
         default=None,
         option='--project-id',
         metavar='ID',
-        help="""
-             Use specific Polarion project ID,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_PROJECT_ID.
-             """
+        help='Use specific Polarion project ID.'
         )
 
     title: Optional[str] = field(
         default=None,
         option='--title',
         metavar='TITLE',
-        help="""
-             Use specific test run title,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_TITLE.
-             """
-        )
-
-    description: Optional[str] = field(
-        default=None,
-        option='--description',
-        metavar='DESCRIPTION',
-        help="""
-             Use specific test run description,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_DESCRIPTION.
-             """
-        )
-
-    template: Optional[str] = field(
-        default=None,
-        option='--template',
-        metavar='TEMPLATE',
-        help="""
-             Use specific test run template,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_TEMPLATE.
-             """
-        )
-
-    use_facts: bool = field(
-        default=False,
-        option=('--use-facts / --no-use-facts'),
-        is_flag=True,
-        show_default=True,
-        help='Use hostname and arch from guest facts.'
+        help='Use specific test run title.'
         )
 
     planned_in: Optional[str] = field(
         default=None,
         option='--planned-in',
         metavar='PLANNEDIN',
-        help="""
-             Select a specific release to mark this test run with,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_PLANNED_IN.
-             """
+        help='Select a specific release to mark this test run with'
         )
 
     assignee: Optional[str] = field(
         default=None,
         option='--assignee',
         metavar='ASSIGNEE',
-        help="""
-             Who is responsible for this test run,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_ASSIGNEE.
-             """
+        help='Who is responsible for this test run'
         )
 
     pool_team: Optional[str] = field(
         default=None,
         option='--pool-team',
         metavar='POOLTEAM',
-        help="""
-             Which subsystem is this test run relevant for,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_POOL_TEAM.
-             """
+        help='Which subsystem is this test run relevant for'
         )
 
     arch: Optional[str] = field(
         default=None,
         option='--arch',
         metavar='ARCH',
-        help="""
-             Which architecture was this run executed on,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_ARCH.
-             """
+        help='Which architecture was this run executed on'
         )
 
     platform: Optional[str] = field(
         default=None,
         option='--platform',
         metavar='PLATFORM',
-        help="""
-             Which platform was this run executed on,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_PLATFORM.
-             """
+        help='Which platform was this run executed on'
         )
 
     build: Optional[str] = field(
         default=None,
         option='--build',
         metavar='BUILD',
-        help="""
-             Which build was this run executed on,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_BUILD.
-             """
+        help='Which build was this run executed on'
         )
 
     sample_image: Optional[str] = field(
         default=None,
         option='--sample-image',
         metavar='SAMPLEIMAGE',
-        help="""
-             Which sample image was this run executed on,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_SAMPLE_IMAGE.
-             """
+        help='Which sample image was this run executed on'
         )
 
     logs: Optional[str] = field(
         default=None,
         option='--logs',
         metavar='LOGLOCATION',
-        help="""
-             Location of the logs for this test run,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_LOGS.
-             Ultimately also uses environment variable TMT_REPORT_ARTIFACTS_URL.
-             """
+        help='Location of the logs for this test run'
         )
 
-    compose_id: Optional[str] = field(
+    composeid: Optional[str] = field(
         default=None,
-        option='--compose-id',
+        option='--composeid',
         metavar='COMPOSEID',
-        help="""
-             Compose ID of image used for this run,
-             also uses environment variable TMT_PLUGIN_REPORT_POLARION_COMPOSE_ID.
-             """
-        )
-
-    fips: bool = field(
-        default=False,
-        option=('--fips / --no-fips'),
-        is_flag=True,
-        show_default=True,
-        help='FIPS mode enabled or disabled for this run.'
+        help='Compose ID of image used for this run'
         )
 
 
 @tmt.steps.provides_method('polarion')
-class ReportPolarion(tmt.steps.report.ReportPlugin[ReportPolarionData]):
+class ReportPolarion(tmt.steps.report.ReportPlugin):
     """
-    Write test results into an xUnit file and upload to Polarion.
+    Write test results into a xUnit file and upload to Polarion
     """
 
     _data_class = ReportPolarionData
 
-    def prune(self, logger: tmt.log.Logger) -> None:
+    def prune(self) -> None:
         """ Do not prune generated xunit report """
         pass
 
@@ -202,26 +130,19 @@ class ReportPolarion(tmt.steps.report.ReportPlugin[ReportPolarionData]):
         from tmt.export.polarion import PolarionWorkItem
         assert PolarionWorkItem
 
-        title = self.data.title
-        if not title:
-            title = os.getenv(
-                'TMT_PLUGIN_REPORT_POLARION_TITLE',
-                self.step.plan.name.rsplit('/', 1)[1] + '_' +
-                # Polarion server running with UTC timezone
-                datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y%m%d%H%M%S"))
+        title = self.get(
+            'title',
+            self.step.plan.name.rsplit('/', 1)[1] +
+            datetime.datetime.now().strftime("%Y%m%d%H%M%S"))
         title = title.replace('-', '_')
-        project_id = self.data.project_id or os.getenv('TMT_PLUGIN_REPORT_POLARION_PROJECT_ID')
-        template = self.data.template or os.getenv('TMT_PLUGIN_REPORT_POLARION_TEMPLATE')
-        # TODO: try use self.data instead - but these fields are not optional, they do have
-        # default values, do envvars even have any effect at all??
-        upload = self.get('upload', os.getenv('TMT_PLUGIN_REPORT_POLARION_UPLOAD'))
-        use_facts = self.get('use-facts', os.getenv('TMT_PLUGIN_REPORT_POLARION_USE_FACTS'))
+        project_id = self.get('project-id')
+        upload = self.get('upload')
         other_testrun_fields = [
-            'description', 'planned_in', 'assignee', 'pool_team', 'arch', 'platform', 'build',
-            'sample_image', 'logs', 'compose_id', 'fips']
+            'planned_in', 'assignee', 'pool_team', 'arch', 'platform', 'build', 'sample_image',
+            'logs', 'composeid']
 
         junit_suite = make_junit_xml(self)
-        xml_tree = ElementTree.fromstring(junit_suite.to_xml_string([junit_suite]))
+        xml_tree = ET.fromstring(junit_suite.to_xml_string([junit_suite]))
 
         properties = {
             'polarion-project-id': project_id,
@@ -229,24 +150,13 @@ class ReportPolarion(tmt.steps.report.ReportPlugin[ReportPolarionData]):
             'polarion-testrun-title': title,
             'polarion-project-span-ids': project_id}
         for tr_field in other_testrun_fields:
-            param = self.get(tr_field, os.getenv(f'TMT_PLUGIN_REPORT_POLARION_{tr_field.upper()}'))
-            # TODO: remove the os.getenv when envvars in click work with steps in plans as well
-            # as with steps on cmdline
+            param = self.get(tr_field)
             if param:
                 properties[f"polarion-custom-{tr_field.replace('_', '')}"] = param
-        if use_facts:
-            properties['polarion-custom-hostname'] = \
-                self.step.plan.provision.guests()[0].primary_address
-            properties['polarion-custom-arch'] = self.step.plan.provision.guests()[0].facts.arch
-        if template:
-            properties['polarion-testrun-template-id'] = template
-        logs = os.getenv('TMT_REPORT_ARTIFACTS_URL')
-        if logs and 'polarion-custom-logs' not in properties:
-            properties['polarion-custom-logs'] = logs
-        testsuites_properties = ElementTree.SubElement(xml_tree, 'properties')
+        testsuites_properties = ET.SubElement(xml_tree, 'properties')
         for name, value in properties.items():
-            ElementTree.SubElement(testsuites_properties, 'property', attrib={
-                'name': name, 'value': str(value)})
+            ET.SubElement(testsuites_properties, 'property', attrib={
+                'name': name, 'value': value})
 
         testsuite = xml_tree.find('testsuite')
         project_span_ids = xml_tree.find(
@@ -254,15 +164,13 @@ class ReportPolarion(tmt.steps.report.ReportPlugin[ReportPolarionData]):
 
         for result in self.step.plan.execute.results():
             if not result.ids or not any(result.ids.values()):
-                self.warn(
-                    f"Test Case '{result.name}' is not exported to Polarion, "
-                    "please run 'tmt tests export --how polarion' on it.")
-                continue
+                raise tmt.utils.ReportError(
+                    f"Test Case {result.name} is not exported to Polarion, "
+                    "please run 'tmt tests export --how polarion' on it")
             work_item_id, test_project_id = find_polarion_case_ids(result.ids)
 
             if test_project_id is None:
-                self.warn(f"Test case '{result.name}' missing or not found in Polarion.")
-                continue
+                raise tmt.utils.ReportError("Test case missing or not found in Polarion")
 
             assert work_item_id is not None
             assert project_span_ids is not None
@@ -277,16 +185,16 @@ class ReportPolarion(tmt.steps.report.ReportPlugin[ReportPolarionData]):
             assert testsuite is not None
             test_case = testsuite.find(f"*[@name='{result.name}']")
             assert test_case is not None
-            properties_elem = ElementTree.SubElement(test_case, 'properties')
+            properties_elem = ET.SubElement(test_case, 'properties')
             for name, value in test_properties.items():
-                ElementTree.SubElement(properties_elem, 'property', attrib={
+                ET.SubElement(properties_elem, 'property', attrib={
                     'name': name, 'value': value})
 
         assert self.workdir is not None
 
-        f_path = self.data.file or self.workdir / DEFAULT_NAME
+        f_path = self.get("file", self.workdir / DEFAULT_NAME)
         with open(f_path, 'wb') as fw:
-            ElementTree.ElementTree(xml_tree).write(fw)
+            ET.ElementTree(xml_tree).write(fw)
 
         if upload:
             server_url = str(PolarionWorkItem._session._server.url)
@@ -299,12 +207,12 @@ class ReportPolarion(tmt.steps.report.ReportPlugin[ReportPolarionData]):
 
             response = post(
                 polarion_import_url, auth=auth,
-                files={'file': ('xunit.xml', ElementTree.tostring(xml_tree))})
+                files={'file': ('xunit.xml', ET.tostring(xml_tree))})
             self.info(
                 f'Response code is {response.status_code} with text: {response.text}')
         else:
+            self.info(f"xUnit file saved at: {f_path}")
             self.info("Polarion upload can be done manually using command:")
             self.info(
                 "curl -k -u <USER>:<PASSWORD> -X POST -F file=@<XUNIT_XML_FILE_PATH> "
                 "<POLARION_URL>/polarion/import/xunit")
-        self.info(f"xUnit file saved at: {f_path}")

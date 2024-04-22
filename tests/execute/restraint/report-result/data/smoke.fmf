@@ -1,29 +1,16 @@
 summary: Verify that test results are correctly mapped
 description:
-    Test to utilise rstrnt-report-result and
-    rhts-report-result to generate an output file and
-    ensure that tmt can read the result.
+    Test to generate a rstrnt-report-result file to check
+    whether tmt can read the result.
 
-/rstrnt-good:
+/good:
     test: rstrnt-report-result report PASS
 
-/rstrnt-bad:
+/bad:
     test: rstrnt-report-result report FAIL
 
-/rstrnt-skip:
+/skip:
     test: rstrnt-report-result report SKIP
 
-/rstrnt-warn:
+/warn:
     test: rstrnt-report-result report WARN
-
-/rhts-good:
-    test: rhts-report-result rhts PASS /tmp/rhts-test
-
-/rhts-bad:
-    test: rhts-report-result rhts FAIL /tmp/rhts-test 1
-
-/rhts-skip:
-    test: rhts-report-result rhts SKIP /tmp/rhts-test 1
-
-/rhts-warn:
-    test: rhts-report-result rhts WARN /tmp/rhts-test 1

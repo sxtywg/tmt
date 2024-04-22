@@ -33,23 +33,14 @@ items:
       type: string
       pattern: "^/.*"
 
-    serial-number:
+    serialnumber:
       type: integer
 
     result:
       $ref: "/schemas/common#/definitions/result_outcome"
 
-    context:
-      $ref: "/schemas/common#/definitions/context"
-
     note:
-      $ref: "/schemas/common#/definitions/result_note"
-
-    start-time:
-      $ref: "/schemas/common#/definitions/timestamp"
-
-    end-time:
-      $ref: "/schemas/common#/definitions/timestamp"
+      type: string
 
     duration:
       type: string
@@ -62,35 +53,9 @@ items:
           type: string
 
     log:
-      $ref: "/schemas/common#/definitions/result_log"
-
-    check:
       type: array
       items:
-        type: object
-        properties:
-          name:
-            type: string
-
-          event:
-            type: string
-            enum:
-              - "before-test"
-              - "after-test"
-
-          result:
-            $ref: "/schemas/common#/definitions/result_outcome"
-
-          note:
-            $ref: "/schemas/common#/definitions/result_note"
-
-          log:
-            $ref: "/schemas/common#/definitions/result_log"
-
-        required:
-          - name
-          - event
-          - result
+        type: string
 
   required:
     - name

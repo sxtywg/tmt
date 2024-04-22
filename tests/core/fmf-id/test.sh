@@ -14,7 +14,7 @@ rlJournalStart
 
         rlRun -s "tmt plan -vvvv show /plan-with-invalid-ref" 2
         rlAssertGrep "warn: /plan-with-invalid-ref:discover .* is not valid under any of the given schemas" $rlRun_LOG
-        rlAssertGrep "Failed to load step data for DiscoverFmfStepData: Field 'DiscoverFmfStepData:ref' must be unset or a string, 'int' found." $rlRun_LOG
+        rlAssertGrep "Failed to load step data for DiscoverFmfStepData: The 'ref' field must be a string, got 'int'." $rlRun_LOG
 
         rlRun -s "tmt plan -vvvv show /remote-plan-with-valid-ref"
 
@@ -23,13 +23,13 @@ rlJournalStart
 
         rlRun -s "tmt test -vvvv show /test-with-valid-ref"
         rlAssertNotGrep "warn:" $rlRun_LOG
-        rlRun "grep -Pzo \"(?s)- ref: branch-or-tag-ref.*?\\s*type: library\" $rlRun_LOG > /dev/null"
-        rlRun "grep -Pzo \"(?s)- ref: 8deadbeaf8.*?\\s*type: library\" $rlRun_LOG > /dev/null"
-        rlAssertGrep "- some-package" $rlRun_LOG
+        rlAssertGrep "{'ref': 'branch-or-tag-ref'}" $rlRun_LOG
+        rlAssertGrep "{'ref': '8deadbeaf8'}" $rlRun_LOG
+        rlAssertGrep "some-package" $rlRun_LOG
 
         rlRun -s "tmt test -vvvv show /test-with-invalid-ref" 2
         rlAssertGrep "warn: /test-with-invalid-ref:require .* is not valid under any of the given schemas" $rlRun_LOG
-        rlAssertGrep "Field 'ref' must be unset or a string, 'int' found." $rlRun_LOG
+        rlAssertGrep "The 'ref' field must be a string, got 'int'." $rlRun_LOG
     rlPhaseEnd
 
     rlPhaseStartCleanup

@@ -5,7 +5,7 @@
 rlJournalStart
     rlPhaseStartSetup
         rlAssertRpm "coreutils"
-        rlRun "rlImport very/deep/file"
+        rlRun "rlImport test/file"
         rlRun "tmp=\$(mktemp -d)" 0 "Creating tmp directory"
         rlRun "pushd $tmp"
     rlPhaseEnd

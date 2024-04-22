@@ -1,7 +1,7 @@
 import email.utils
 import re
 import traceback
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import fmf.utils
 from click import echo, style
@@ -20,7 +20,7 @@ PolarionWorkItem: Any = None
 
 POLARION_TRACKER_ID = 117  # ID of polarion in RH's bugzilla
 RE_POLARION_URL = r'.*/polarion/#/project/.*/workitem\?id=(.*)'
-LEGACY_POLARION_PROJECTS = {'RedHatEnterpriseLinux7'}
+LEGACY_POLARION_PROJECTS = set(['RedHatEnterpriseLinux7'])
 
 # TODO: why this exists?
 log = fmf.utils.Logging('tmt').logger
@@ -33,7 +33,7 @@ def import_polarion() -> None:
         from pylero.exceptions import PyleroLibException as PolarionException
     except ImportError:
         raise ConvertError(
-            "Install 'tmt+export-polarion' to use Polarion API")
+            "Run 'pip install tmt[export-polarion]' so pylero is installed.")
 
     try:
         from pylero.work_item import TestCase as PolarionTestCase
@@ -44,8 +44,8 @@ def import_polarion() -> None:
 
 
 def get_polarion_ids(
-        query_result: list[Any],
-        preferred_project: Optional[str] = None) -> tuple[str, Optional[str]]:
+        query_result: List[Any],
+        preferred_project: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """ Return case and project ids from query results """
     if not query_result:
         return 'None', None
@@ -70,9 +70,9 @@ def get_polarion_ids(
 
 
 def find_polarion_case_ids(
-        data: dict[str, Optional[str]],
+        data: Dict[str, Optional[str]],
         preferred_project: Optional[str] = None,
-        polarion_case_id: Optional[str] = None) -> tuple[str, Optional[str]]:
+        polarion_case_id: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """ Find IDs for Polarion case from data dictionary """
     assert PolarionWorkItem
 
@@ -113,7 +113,7 @@ def find_polarion_case_ids(
 
 
 def get_polarion_case(
-        data: dict[str, Optional[str]],
+        data: Dict[str, Optional[str]],
         preferred_project: Optional[str] = None,
         polarion_case_id: Optional[str] = None) -> Optional[PolarionTestCase]:
     """ Get Polarion case through couple different methods """
@@ -128,7 +128,7 @@ def get_polarion_case(
         polarion_case = PolarionTestCase(
             project_id=project_id, work_item_id=case_id)
         echo(style(
-            f"Test case '{polarion_case.work_item_id!s}' found.",
+            f"Test case '{str(polarion_case.work_item_id)}' found.",
             fg='blue'))
         return polarion_case
     except PolarionException:
@@ -147,18 +147,6 @@ def create_polarion_case(summary: str, project_id: str, path: Path) -> PolarionT
     return testcase
 
 
-def add_hyperlink(polarion_case: PolarionTestCase, link: str, role: str = 'testscript') -> None:
-    """ Add new hyperlink to a Polarion case and check/remove duplicates """
-    existing_hyperlinks = [link.uri for link in polarion_case.hyperlinks if link.role == role]
-    if link not in existing_hyperlinks:
-        polarion_case.add_hyperlink(link, role)
-    else:
-        for hyperlink in set(existing_hyperlinks):
-            for _ in range(existing_hyperlinks.count(hyperlink) - 1):
-                # Remove all but one occurence of the same hyperlink
-                polarion_case.remove_hyperlink(hyperlink)
-
-
 def export_to_polarion(test: tmt.base.Test) -> None:
     """ Export fmf metadata to a Polarion test case """
     import tmt.export.nitrate
@@ -168,15 +156,14 @@ def export_to_polarion(test: tmt.base.Test) -> None:
     create = test.opt('create')
     link_bugzilla = test.opt('bugzilla')
     project_id = test.opt('project_id')
-    dry_mode = test.is_dry_run
+    dry_mode = test.opt('dry')
     duplicate = test.opt('duplicate')
     link_polarion = test.opt('link_polarion')
-    append_summary = test.opt('append-summary')
 
     polarion_case = None
     if not duplicate:
         polarion_case = get_polarion_case(test.node, project_id)
-    summary = tmt.export.nitrate.prepare_extra_summary(test, append_summary)
+    summary = tmt.export.nitrate.prepare_extra_summary(test)
     assert test.path is not None  # narrow type
     test_path = test.node.root / test.path.unrooted()
 
@@ -207,7 +194,7 @@ def export_to_polarion(test: tmt.base.Test) -> None:
         echo(style('title: ', fg='green') + test.summary)
 
     # Add id to Polarion case
-    uuid = add_uuid_if_not_defined(test.node, dry_mode, test._logger)
+    uuid = add_uuid_if_not_defined(test.node, dry=dry_mode)
     if not uuid:
         uuid = test.node.get(ID_KEY)
     if not dry_mode:
@@ -219,10 +206,6 @@ def export_to_polarion(test: tmt.base.Test) -> None:
     description = summary
     if test.description:
         description += ' - ' + test.description
-    if test.environment:
-        description += '<br/>Environment variables:'
-        for key, value in test.environment.items():
-            description += f'<br/>{key}={value}'
     if not dry_mode:
         polarion_case.description = description
     echo(style('description: ', fg='green') + description)
@@ -231,20 +214,13 @@ def export_to_polarion(test: tmt.base.Test) -> None:
     assert test.fmf_id.url is not None  # narrow type
     if test.node.get('extra-task'):
         automation_script = test.node.get('extra-task')
-        automation_script += f'<br/>{test.fmf_id.url}'
+        automation_script += ' ' + test.fmf_id.url
     else:
         automation_script = test.fmf_id.url
     if not dry_mode:
         polarion_case.caseautomation = 'automated'
-        if test.link:
-            for link in test.link.get(relation='test-script'):
-                if isinstance(link.target, str):
-                    automation_script += f'<br/>{link.target}'
-                    add_hyperlink(polarion_case, link.target)
         polarion_case.automation_script = automation_script
-        web_link = test.web_link()
-        if web_link:
-            add_hyperlink(polarion_case, web_link)
+        polarion_case.add_hyperlink(test.web_link(), 'testscript')
     echo(style('script: ', fg='green') + automation_script)
 
     # Components
@@ -305,7 +281,7 @@ def export_to_polarion(test: tmt.base.Test) -> None:
             tmt.convert.add_link(
                 f'{server_url}{"" if server_url.endswith("/") else "/"}'
                 f'#/project/{polarion_case.project_id}/workitem?id='
-                f'{polarion_case.work_item_id!s}',
+                f'{str(polarion_case.work_item_id)}',
                 data, system=tmt.convert.SYSTEM_OTHER, type_='implements')
 
     # List of bugs test verifies
@@ -356,7 +332,7 @@ def export_to_polarion(test: tmt.base.Test) -> None:
     # Optionally link Bugzilla to Polarion case
     if link_bugzilla and bug_ids and not dry_mode:
         case_id = (f"{polarion_case.project_id}/workitem?id="
-                   f"{polarion_case.work_item_id!s}")
+                   f"{str(polarion_case.work_item_id)}")
         tmt.export.bz_set_coverage(bug_ids, case_id, POLARION_TRACKER_ID)
 
 
@@ -364,8 +340,8 @@ def export_to_polarion(test: tmt.base.Test) -> None:
 class PolarionExporter(tmt.export.ExportPlugin):
     @classmethod
     def export_test_collection(cls,
-                               tests: list[tmt.base.Test],
-                               keys: Optional[list[str]] = None,
+                               tests: List[tmt.base.Test],
+                               keys: Optional[List[str]] = None,
                                **kwargs: Any) -> str:
         for test in tests:
             export_to_polarion(test)

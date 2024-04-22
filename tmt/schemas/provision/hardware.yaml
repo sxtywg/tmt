@@ -11,9 +11,8 @@ $schema: http://json-schema.org/draft-07/schema
 
 definitions:
   # HW requirements: `arch`
-  # NOTE: not yet supported in hardware
-  # arch:
-  #   type: string
+  arch:
+    type: string
 
   # HW requirements: `boot` block
   boot:
@@ -22,6 +21,9 @@ definitions:
     properties:
       method:
         type: string
+        enum:
+          - bios
+          - uefi
 
     additionalProperties: false
 
@@ -83,55 +85,12 @@ definitions:
           - type: integer
       model-name:
         type: string
-      stepping:
-        anyOf:
-          - type: string
-          - type: integer
-      flag:
-        type: array
-        items:
-          type: string
 
     additionalProperties: false
 
     # enforce at least one property - we don't care which one, but we don't want
     # empty `cpu`.
     minProperties: 1
-
-  # HW requirements: single `device` item
-  device:
-    type: object
-
-    properties:
-      device-name:
-        type: string
-
-      device:
-        anyOf:
-          - type: string
-          - type: integer
-
-      driver:
-        type: string
-
-      vendor-name:
-        type: string
-
-      vendor:
-        anyOf:
-          - type: string
-          - type: integer
-
-    additionalProperties: false
-
-    # enforce at least one property
-    minProperties: 1
-
-  # HW requirements: `device` block
-  devices:
-    type: array
-    items:
-      "$ref": "#/definitions/device"
 
   # HW requirements: single `disk` item
   disk:
@@ -142,11 +101,6 @@ definitions:
         anyOf:
           - type: string
           - type: integer
-      model-name:
-        type: string
-
-      driver:
-        type: string
 
     additionalProperties: false
 
@@ -159,36 +113,6 @@ definitions:
     type: array
     items:
       "$ref": "#/definitions/disk"
-
-  # HW requirements: single `gpu` item
-  gpu:
-    type: object
-
-    properties:
-      device-name:
-        type: string
-
-      device:
-        anyOf:
-          - type: string
-          - type: integer
-
-      vendor-name:
-        type: string
-
-      vendor:
-        anyOf:
-          - type: string
-          - type: integer
-
-      driver:
-        type: string
-
-    additionalProperties: false
-
-    # enforce at least one property - we don't care which one, but we don't want
-    # empty `gpu`.
-    minProperties: 1
 
   hostname:
     type: string
@@ -206,23 +130,10 @@ definitions:
       device-name:
         type: string
 
-      device:
-        anyOf:
-          - type: string
-          - type: integer
+      type:
+        type: string
 
       vendor-name:
-        type: string
-
-      vendor:
-        anyOf:
-          - type: string
-          - type: integer
-
-      driver:
-        type: string
-
-      type:
         type: string
 
     additionalProperties: false
@@ -243,19 +154,9 @@ definitions:
 
     properties:
       vendor:
-        anyOf:
-          - type: string
-          - type: integer
-
-      vendor-name:
         type: string
 
       model:
-        anyOf:
-          - type: string
-          - type: integer
-
-      model-name:
         type: string
 
       numa-nodes:
@@ -279,19 +180,6 @@ definitions:
     additionalProperties: false
     minProperties: 1
 
-  # HW requirements: `zcrypt` block
-  zcrypt:
-    type: object
-
-    properties:
-      adapter:
-        type: string
-      mode:
-        type: string
-
-    additionalProperties: false
-    minProperties: 1
-
   # HW requirements: `virtualization` block
   virtualization:
     type: object
@@ -305,6 +193,10 @@ definitions:
 
       hypervisor:
         type: string
+        enum:
+          - nitro
+          - kvm
+          - xen
 
     additionalProperties: false
 
@@ -317,8 +209,8 @@ definitions:
     type: object
 
     properties:
-      # arch:
-      #   "$ref": "#/definitions/arch"
+      arch:
+        "$ref": "#/definitions/arch"
 
       boot:
         "$ref": "#/definitions/boot"
@@ -329,14 +221,8 @@ definitions:
       cpu:
         "$ref": "#/definitions/cpu"
 
-      device:
-        "$ref": "#/definitions/devices"
-
       disk:
         "$ref": "#/definitions/disks"
-
-      gpu:
-        "$ref": "#/definitions/gpu"
 
       hostname:
         "$ref": "#/definitions/hostname"
@@ -352,9 +238,6 @@ definitions:
 
       tpm:
         "$ref": "#/definitions/tpm"
-
-      zcrypt:
-        "$ref": "#/definitions/zcrypt"
 
       virtualization:
         "$ref": "#/definitions/virtualization"

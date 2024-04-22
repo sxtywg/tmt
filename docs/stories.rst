@@ -16,13 +16,10 @@ couple of examples demonstrating expected usage.
     stories/docs
     stories/cli
     stories/features
-    stories/deferred
 
 
 It is also possible to list and search stories directly from the
-command line using the ``story`` command:
-
-.. code-block:: shell
+command line using the ``story`` command::
 
     tmt story ls
     tmt story show
@@ -30,9 +27,7 @@ command line using the ``story`` command:
 
 Current status of story coverage from implementation, testing and
 documentation point of view can be viewed using the ``coverage``
-subcommand with optional regular expression for filtering:
-
-.. code-block:: shell
+subcommand with optional regular expression for filtering::
 
     tmt story coverage
     tmt story coverage cli

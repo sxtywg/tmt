@@ -1,6 +1,5 @@
 import dataclasses
-from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, List, Optional, Type, cast
 
 import click
 from fmf.utils import listed
@@ -9,87 +8,47 @@ import tmt
 
 if TYPE_CHECKING:
     import tmt.cli
-    import tmt.options
     import tmt.steps
+    import tmt.options
 
 import tmt.base
 import tmt.steps
 import tmt.utils
-from tmt.options import option
-from tmt.plugins import PluginRegistry
 from tmt.steps import Action
-from tmt.utils import GeneralError, Path, field, key_to_option
+from tmt.utils import Command, GeneralError, Path, flatten
 
 
 @dataclasses.dataclass
 class DiscoverStepData(tmt.steps.WhereableStepData, tmt.steps.StepData):
-    dist_git_source: bool = field(
+    dist_git_source: bool = tmt.utils.field(
         default=False,
         option='--dist-git-source',
         is_flag=True,
-        help='Download DistGit sources and ``rpmbuild -bp`` them (can be skipped).'
+        help='Extract DistGit sources.'
         )
 
     # TODO: use enum!
-    dist_git_type: Optional[str] = field(
+    dist_git_type: Optional[str] = tmt.utils.field(
         default=None,
         option='--dist-git-type',
         choices=tmt.utils.get_distgit_handler_names,
         help='Use the provided DistGit handler instead of the auto detection.'
         )
 
-    dist_git_download_only: bool = field(
-        default=False,
-        option="--dist-git-download-only",
-        is_flag=True,
-        help="Just download the sources. No ``rpmbuild -bp``, "
-        "nor installation of require or buildddeps happens.",
-        )
 
-    dist_git_install_builddeps: bool = field(
-        default=False,
-        option="--dist-git-install-builddeps",
-        is_flag=True,
-        help="Install package build dependencies according to the specfile.",
-        )
-
-    dist_git_require: list['tmt.base.DependencySimple'] = field(
-        default_factory=list,
-        option="--dist-git-require",
-        metavar='PACKAGE',
-        multiple=True,
-        help='Additional required package to be present before sources are prepared.',
-        # *simple* requirements only
-        normalize=lambda key_address, value, logger: tmt.base.assert_simple_dependencies(
-            tmt.base.normalize_require(key_address, value, logger),
-            "'dist_git_require' can be simple packages only",
-            logger),
-        serialize=lambda packages: [package.to_spec() for package in packages],
-        unserialize=lambda serialized: [
-            tmt.base.DependencySimple.from_spec(package)
-            for package in serialized
-            ]
-        )
-
-
-DiscoverStepDataT = TypeVar('DiscoverStepDataT', bound=DiscoverStepData)
-
-
-class DiscoverPlugin(tmt.steps.GuestlessPlugin[DiscoverStepDataT]):
+class DiscoverPlugin(tmt.steps.GuestlessPlugin):
     """ Common parent of discover plugins """
 
-    # ignore[assignment]: as a base class, DiscoverStepData is not included in
-    # DiscoverStepDataT.
-    _data_class = DiscoverStepData  # type: ignore[assignment]
+    _data_class = DiscoverStepData
 
-    # Methods ("how: ..." implementations) registered for the same step.
-    _supported_methods: PluginRegistry[tmt.steps.Method] = PluginRegistry()
+    # List of all supported methods aggregated from all plugins of the same step.
+    _supported_methods: List[tmt.steps.Method] = []
 
     @classmethod
     def base_command(
             cls,
             usage: str,
-            method_class: Optional[type[click.Command]] = None) -> click.Command:
+            method_class: Optional[Type[click.Command]] = None) -> click.Command:
         """ Create base click command (common for all discover plugins) """
 
         # Prepare general usage message for the step
@@ -99,21 +58,24 @@ class DiscoverPlugin(tmt.steps.GuestlessPlugin[DiscoverStepDataT]):
         # Create the command
         @click.command(cls=method_class, help=usage)
         @click.pass_context
-        @option(
+        @click.option(
             '-h', '--how', metavar='METHOD',
             help='Use specified method to discover tests.')
-        @tmt.steps.PHASE_OPTIONS
         def discover(context: 'tmt.cli.Context', **kwargs: Any) -> None:
+            # TODO: This part should go into the 'fmf.py' module
+            if kwargs.get('fmf_id'):
+                # Set quiet, disable debug and verbose to avoid logging
+                # to terminal with discover --fmf-id
+                assert context.parent is not None
+                context.parent.params['quiet'] = True
+                context.parent.params['debug'] = 0
+                context.parent.params['verbose'] = 0
             context.obj.steps.add('discover')
-            Discover.store_cli_invocation(context)
+            Discover._save_context(context)
 
         return discover
 
-    def tests(
-            self,
-            *,
-            phase_name: Optional[str] = None,
-            enabled: Optional[bool] = None) -> list['tmt.Test']:
+    def tests(self) -> List['tmt.Test']:
         """
         Return discovered tests
 
@@ -122,50 +84,45 @@ class DiscoverPlugin(tmt.steps.GuestlessPlugin[DiscoverStepDataT]):
         """
         raise NotImplementedError
 
-    def download_distgit_source(
-            self,
-            distgit_dir: Path,
-            target_dir: Path,
-            handler_name: Optional[str] = None) -> None:
+    def extract_distgit_source(
+            self, distgit_dir: Path, target_dir: Path, handler_name: Optional[str] = None) -> None:
         """
-        Download sources to the target_dir
+        Extract source tarball into target_dir
 
-        distgit_dir is path to the DistGit repository
+        distgit_dir is path to the DistGit repository.
+        Source tarball is discovered from the 'sources' file content.
         """
-        tmt.utils.distgit_download(
-            distgit_dir=distgit_dir,
-            target_dir=target_dir,
-            handler_name=handler_name,
-            caller=self,
-            logger=self._logger
-            )
+        if handler_name is None:
+            stdout, _ = self.run(
+                Command("git", "config", "--get-regexp", '^remote\\..*.url'),
+                cwd=distgit_dir)
+            if stdout is None:
+                raise tmt.utils.GeneralError("Missing remote origin url.")
 
-    def log_import_plan_details(self) -> None:
-        """
-        Log details about the imported plan
-        """
-        parent = cast(Optional[tmt.steps.discover.Discover], self.parent)
-        if parent and parent.plan._original_plan and \
-                parent.plan._original_plan._remote_plan_fmf_id:
-            remote_plan_id = parent.plan._original_plan._remote_plan_fmf_id
-            # FIXME: cast() - https://github.com/python/mypy/issues/7981
-            # Note the missing Optional for values - to_minimal_dict() would
-            # not include unset keys, therefore all values should be valid.
-            for key, value in cast(dict[str, str], remote_plan_id.to_minimal_spec()).items():
-                self.verbose(f'import {key}', value, 'green')
-
-    def post_dist_git(self, created_content: list[Path]) -> None:
-        """
-        Discover tests after dist-git applied patches
-        """
-        pass
+            remotes = stdout.split('\n')
+            handler = tmt.utils.get_distgit_handler(remotes=remotes)
+        else:
+            handler = tmt.utils.get_distgit_handler(usage_name=handler_name)
+        for url, source_name in handler.url_and_name(distgit_dir):
+            if not handler.re_supported_extensions.search(source_name):
+                continue
+            self.debug(f"Download sources from '{url}'.")
+            with tmt.utils.retry_session() as session:
+                response = session.get(url)
+            response.raise_for_status()
+            target_dir.mkdir(exist_ok=True, parents=True)
+            with open(target_dir / source_name, 'wb') as tarball:
+                tarball.write(response.content)
+            self.run(
+                Command("tar", "--auto-compress", "--extract", "-f", source_name),
+                cwd=target_dir)
 
 
 class Discover(tmt.steps.Step):
     """ Gather information about test cases to be executed. """
 
     _plugin_base_class = DiscoverPlugin
-    _preserved_workdir_members = ['step.yaml', 'tests.yaml']
+    _preserved_files = ['step.yaml', 'tests.yaml']
 
     def __init__(
             self,
@@ -176,47 +133,20 @@ class Discover(tmt.steps.Step):
         """ Store supported attributes, check for sanity """
         super().__init__(plan=plan, data=data, logger=logger)
 
-        # Collection of discovered tests
-        self._tests: dict[str, list[tmt.Test]] = {}
-
-        # Test will be (re)discovered in other phases/steps
-        self.extract_tests_later: bool = False
+        # List of Test() objects representing discovered tests
+        self._tests: List[tmt.Test] = []
 
     def load(self) -> None:
         """ Load step data from the workdir """
         super().load()
         try:
             raw_test_data = tmt.utils.yaml_to_list(self.read(Path('tests.yaml')))
-
-            self._tests = {}
-
-            for raw_test_datum in raw_test_data:
-                # The name of `discover` phases providing the test was added in 1.24.
-                # Unfortunatelly, the field is required for correct work of `execute`,
-                # now when it is parallel in nature. Without it, it's not possible
-                # to pick the right `discover` phase which then provides the list
-                # of tests to execute. Therefore raising an error instead of guessing
-                # what the phase could be.
-                if key_to_option('discover_phase') not in raw_test_datum:
-                    # TODO: there should be a method for creating workdir-aware paths...
-                    path = self.workdir / Path('tests.yaml') if self.workdir \
-                        else Path('tests.yaml')
-
-                    raise tmt.utils.BackwardIncompatibleDataError(
-                        f"Could not load '{path}' whose format is not compatible "
-                        "with tmt 1.24 and newer."
-                        )
-
-                phase_name = raw_test_datum.pop(key_to_option('discover_phase'))
-
-                if phase_name not in self._tests:
-                    self._tests[phase_name] = []
-
-                self._tests[phase_name].append(tmt.Test.from_dict(
+            self._tests = [
+                tmt.Test.from_dict(
                     logger=self._logger,
                     mapping=raw_test_datum,
                     name=raw_test_datum['name'],
-                    skip_validation=True))
+                    skip_validation=True) for raw_test_datum in raw_test_data]
 
         except tmt.utils.FileError:
             self.debug('Discovered tests not found.', level=2)
@@ -226,17 +156,10 @@ class Discover(tmt.steps.Step):
         super().save()
 
         # Create tests.yaml with the full test data
-        raw_test_data: list['tmt.export._RawExportedInstance'] = []
-
-        for phase_name, phase_tests in self._tests.items():
-            for test in phase_tests:
-                if test.enabled is not True:
-                    continue
-
-                exported_test = test._export(include_internal=True)
-                exported_test[key_to_option('discover_phase')] = phase_name
-
-                raw_test_data.append(exported_test)
+        raw_test_data = [
+            test._export()
+            for test in self.tests()
+            ]
 
         self.write(Path('tests.yaml'), tmt.utils.dict_to_yaml(raw_test_data))
 
@@ -300,14 +223,12 @@ class Discover(tmt.steps.Step):
         # Choose the right plugin and wake it up
         for data in self.data:
             # FIXME: cast() - see https://github.com/teemtee/tmt/issues/1599
-            plugin = cast(
-                DiscoverPlugin[DiscoverStepData],
-                DiscoverPlugin.delegate(self, data=data))
+            plugin = cast(DiscoverPlugin, DiscoverPlugin.delegate(self, data=data))
             self._phases.append(plugin)
             plugin.wake()
 
-        # Nothing more to do if already done and not asked to run again
-        if self.status() == 'done' and not self.should_run_again:
+        # Nothing more to do if already done
+        if self.status() == 'done':
             self.debug(
                 'Discover wake up complete (already done before).', level=2)
         # Save status and step data (now we know what to do)
@@ -318,15 +239,15 @@ class Discover(tmt.steps.Step):
     def summary(self) -> None:
         """ Give a concise summary of the discovery """
         # Summary of selected tests
-        text = listed(len(self.tests(enabled=True)), 'test') + ' selected'
+        text = listed(len(self.tests()), 'test') + ' selected'
         self.info('summary', text, 'green', shift=1)
         # Test list in verbose mode
-        for test in self.tests(enabled=True):
+        for test in self.tests():
             self.verbose(test.name, color='red', shift=2)
 
-    def go(self, force: bool = False) -> None:
-        """ Discover all tests """
-        super().go(force=force)
+    def go(self) -> None:
+        """ Execute all steps """
+        super().go()
 
         # Nothing more to do if already done
         if self.status() == 'done':
@@ -336,6 +257,7 @@ class Discover(tmt.steps.Step):
             return
 
         # Perform test discovery, gather discovered tests
+        self._tests = []
         for phase in self.phases(classes=(Action, DiscoverPlugin)):
             if isinstance(phase, Action):
                 phase.go()
@@ -344,44 +266,31 @@ class Discover(tmt.steps.Step):
                 # Go and discover tests
                 phase.go()
 
-                self._tests[phase.name] = []
-
                 # Prefix test name only if multiple plugins configured
                 prefix = f'/{phase.name}' if len(self.phases()) > 1 else ''
                 # Check discovered tests, modify test name/path
-                for test in phase.tests(enabled=True):
+                for test in phase.tests():
                     test.name = f"{prefix}{test.name}"
                     test.path = Path(f"/{phase.safe_name}{test.path}")
                     # Update test environment with plan environment
                     test.environment.update(self.plan.environment)
-                    self._tests[phase.name].append(test)
+                    self._tests.append(test)
 
             else:
                 raise GeneralError(f'Unexpected phase in discover step: {phase}')
 
-        for test in self.tests():
-            test.serial_number = self.plan.draw_test_serial_number(test)
+        for test in self._tests:
+            test.serialnumber = self.plan.draw_test_serial_number(test)
 
         # Show fmf identifiers for tests discovered in plan
         # TODO: This part should go into the 'fmf.py' module
         if self.opt('fmf_id'):
-            if self.tests(enabled=True):
-                export_fmf_ids: list[str] = []
-
-                for test in self.tests(enabled=True):
-                    fmf_id = test.fmf_id
-
-                    if not fmf_id.url:
-                        continue
-
-                    exported = test.fmf_id.to_minimal_spec()
-
-                    if fmf_id.default_branch and fmf_id.ref == fmf_id.default_branch:
-                        exported.pop('ref')
-
-                    export_fmf_ids.append(tmt.utils.dict_to_yaml(exported, start=True))
-
-                click.echo(''.join(export_fmf_ids), nl=False)
+            if self.tests():
+                fmf_id_list = [
+                    tmt.utils.dict_to_yaml(
+                        test.fmf_id.to_minimal_spec(),
+                        start=True) for test in self.tests() if test.fmf_id.url]
+                click.echo(''.join(fmf_id_list), nl=False)
             return
 
         # Give a summary, update status and save
@@ -389,23 +298,22 @@ class Discover(tmt.steps.Step):
         self.status('done')
         self.save()
 
-    def tests(
-            self,
-            *,
-            phase_name: Optional[str] = None,
-            enabled: Optional[bool] = None) -> list['tmt.Test']:
-        def _iter_all_tests() -> Iterator['tmt.Test']:
-            for phase_tests in self._tests.values():
-                yield from phase_tests
+    def tests(self) -> List['tmt.Test']:
+        """ Return the list of all enabled tests """
+        return [test for test in self._tests if test.enabled]
 
-        def _iter_phase_tests() -> Iterator['tmt.Test']:
-            assert phase_name is not None
+    def requires(self) -> List['tmt.base.Require']:
+        """
+        Collect all test requirements of all discovered tests in this step.
 
-            yield from self._tests[phase_name]
+        Puts together a list of requirements which need to be installed on the
+        provisioned guest so that all discovered tests of this step can be
+        successfully executed.
 
-        iterator = _iter_all_tests if phase_name is None else _iter_phase_tests
+        :returns: a list of requirements, with duplicaties removed.
+        """
+        return flatten((test.require for test in self.tests()), unique=True)
 
-        if enabled is None:
-            return list(iterator())
-
-        return [test for test in iterator() if test.enabled is enabled]
+    def recommends(self) -> List['tmt.base.Require']:
+        """ Return all packages recommended by tests """
+        return flatten((test.recommend for test in self.tests()), unique=True)

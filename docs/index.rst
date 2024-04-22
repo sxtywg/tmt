@@ -29,10 +29,9 @@ Table of Contents
     Overview <overview>
     Guide <guide>
     Specification <spec>
-    Plugins <plugins/index>
     Examples <examples>
     Stories <stories>
     Questions <questions>
     Contribute <contribute>
-    Code <code/index>
-    Releases <releases>
+    Classes <classes>
+    Plugins <plugins>
