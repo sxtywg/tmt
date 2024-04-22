@@ -2,16 +2,9 @@ import email.utils
 import os
 import re
 import types
-from collections.abc import Iterator
-from contextlib import suppress
-from functools import cache
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Optional,
-    Union,
-    cast,
-    )
+from functools import lru_cache
+from typing import (TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple,
+                    Union, cast)
 
 import fmf.context
 from click import echo, style
@@ -45,9 +38,9 @@ NitrateTestCase = Any
 
 DEFAULT_PRODUCT: Any = None
 
-SectionsReturnType = tuple[str, str, str, str]
-HeadingsType = list[list[Union[int, str]]]
-SectionsHeadingsType = dict[str, HeadingsType]
+SectionsReturnType = Tuple[str, str, str, str]
+HeadingsType = List[List[Union[int, str]]]
+SectionsHeadingsType = Dict[str, HeadingsType]
 
 # TODO: why this exists?
 log = fmf.utils.Logging('tmt').logger
@@ -67,13 +60,13 @@ def import_nitrate() -> Nitrate:
         return nitrate
     except ImportError:
         raise ConvertError(
-            "Install tmt+test-convert to export tests to nitrate.")
+            "Install tmt-test-convert to export tests to nitrate.")
     # FIXME: ignore[union-attr]: https://github.com/teemtee/tmt/issues/1616
     except nitrate.NitrateError as error:  # type: ignore[union-attr]
         raise ConvertError(error)
 
 
-def _nitrate_find_fmf_testcases(test: 'tmt.Test') -> Iterator[Any]:
+def _nitrate_find_fmf_testcases(test: 'tmt.Test') -> Generator[Any, None, None]:
     """
     Find all Nitrate test cases with the same fmf identifier
 
@@ -120,13 +113,13 @@ def convert_manual_to_nitrate(test_md: Path) -> SectionsReturnType:
     html = tmt.utils.markdown_to_html(test_md)
     html_splitlines = html.splitlines()
 
-    for key in sections_headings:
+    for key in sections_headings.keys():
         result: HeadingsType = []
         i = 0
         while html_splitlines:
             try:
                 if re.search("^" + key + "$", html_splitlines[i]):
-                    html_content = ''
+                    html_content = str()
                     if key.startswith('<h1>Test'):
                         html_content = html_splitlines[i].\
                             replace('<h1>', '<b>').\
@@ -149,8 +142,8 @@ def convert_manual_to_nitrate(test_md: Path) -> SectionsReturnType:
                 sections_headings[key] = result
                 break
 
-    def concatenate_headings_content(headings: tuple[str, ...]) -> HeadingsType:
-        content = []
+    def concatenate_headings_content(headings: Tuple[str, ...]) -> HeadingsType:
+        content = list()
         for v in headings:
             content += sections_headings[v]
         return content
@@ -192,25 +185,12 @@ def convert_manual_to_nitrate(test_md: Path) -> SectionsReturnType:
 
 def enabled_somewhere(test: 'tmt.Test') -> bool:
     """ True if the test is enabled for some context (adjust rules) """
-    # Already enabled, no need to dig deeper
-    if test.enabled:
-        return True
-    # We need to find 'enabled' value before adjust happened
     # node.original_data are fmf data _before_ adjust was processed
-    node = test.node
-    enabled_not_set = True
-    while enabled_not_set and node is not None:
-        try:
-            if node.original_data['enabled']:
-                return True
-            enabled_not_set = False
-        except KeyError:
-            pass
-        # Not set in this node, check parent
-        node = node.parent
-
-    # Default value (True) of 'enabled' was used
-    if enabled_not_set:
+    try:
+        if test.node.original_data['enabled']:
+            return True
+    except KeyError:
+        # Key defaults to True so we already know the outcome
         return True
 
     # Some rule in adjust enables the test
@@ -252,7 +232,7 @@ def enabled_for_environment(test: 'tmt.base.Test', tcms_notes: str) -> bool:
     try:
         context = fmf.context.Context(**context_dict)
         test_node = test.node.copy()
-        test_node.adjust(context, case_sensitive=False)
+        test_node.adjust(context)
         return tmt.Test(node=test_node, logger=test._logger).enabled
     except BaseException as exception:
         log.debug(f"Failed to process adjust: {exception}")
@@ -269,12 +249,12 @@ def return_markdown_file() -> Optional[Path]:
     if len(md_files) == 1:
         return Path.cwd() / str(md_files[0])
     if not md_files:
-        echo(style(f'Markdown file doesn\'t exist {fail_message}',
-                   fg='yellow'))
+        echo((style(f'Markdown file doesn\'t exist {fail_message}',
+                    fg='yellow')))
         return None
 
-    echo(style(f'{len(md_files)} Markdown files found {fail_message}',
-               fg='yellow'))
+    echo((style(f'{len(md_files)} Markdown files found {fail_message}',
+                fg='yellow')))
     return None
 
 
@@ -289,7 +269,7 @@ def get_category(path: Path) -> str:
         if category_search:
             category = category_search.group(1)
     # Default to 'Sanity' if Makefile or Type not found
-    except (OSError, AttributeError):
+    except (IOError, AttributeError):
         pass
     return category
 
@@ -334,26 +314,26 @@ def add_to_nitrate_runs(
                     nitrate.CaseRun(testcase=nitrate_case, testrun=testrun)
 
 
-def prepare_extra_summary(test: 'tmt.Test', append_summary: bool) -> str:
+def prepare_extra_summary(test: 'tmt.Test') -> str:
     """ extra-summary for export --create test """
     assert test.fmf_id.url is not None  # narrow type
     remote_dirname = re.sub('.git$', '', os.path.basename(test.fmf_id.url))
     if not remote_dirname:
         raise ConvertError("Unable to find git remote url.")
     generated = f"{remote_dirname} {test.name}"
-    if test.summary and append_summary:
+    if test.summary:
         generated += f" - {test.summary}"
     # FIXME: cast() - no issue, type-less "dispatcher" method
     return cast(str, test.node.get('extra-summary', generated))
 
 
 # avoid multiple searching for general plans (it is expensive)
-@cache
+@lru_cache(maxsize=None)
 def find_general_plan(component: str) -> NitrateTestPlan:
     """ Return single General Test Plan or raise an error """
     assert nitrate
     # At first find by linked components
-    found: list[NitrateTestPlan] = nitrate.TestPlan.search(
+    found: List[NitrateTestPlan] = nitrate.TestPlan.search(
         type__name="General",
         is_active=True,
         component__name=f"{component}")
@@ -389,8 +369,7 @@ def export_to_nitrate(test: 'tmt.Test') -> None:
     duplicate = test.opt('duplicate')
     link_bugzilla = test.opt('bugzilla')
     ignore_git_validation = test.opt('ignore_git_validation')
-    dry_mode = test.is_dry_run
-    append_summary = test.opt('append-summary')
+    dry_mode = test.opt('dry')
 
     if link_runs:
         general = True
@@ -409,7 +388,7 @@ def export_to_nitrate(test: 'tmt.Test') -> None:
     try:
         nitrate_id = test.node.get('extra-nitrate')[3:]
         nitrate_case: NitrateTestCase = nitrate.TestCase(int(nitrate_id))
-        nitrate_case.summary  # noqa: B018 - Make sure we connect to the server now
+        nitrate_case.summary  # Make sure we connect to the server now
         echo(style(f"Test case '{nitrate_case.identifier}' found.", fg='blue'))
     except TypeError:
         # Create a new nitrate test case
@@ -418,11 +397,14 @@ def export_to_nitrate(test: 'tmt.Test') -> None:
             # Check for existing Nitrate tests with the same fmf id
             if not duplicate:
                 testcases = _nitrate_find_fmf_testcases(test)
-                with suppress(StopIteration):
+                try:
+                    # Select the first found testcase if any
                     nitrate_case = next(testcases)
+                except StopIteration:
+                    pass
             if not nitrate_case:
                 # Summary for TCMS case
-                extra_summary = prepare_extra_summary(test, append_summary)
+                extra_summary = prepare_extra_summary(test)
                 assert test.path is not None  # narrow type
                 category = get_category(test.node.root / test.path.unrooted())
                 if not dry_mode:
@@ -451,7 +433,7 @@ def export_to_nitrate(test: 'tmt.Test') -> None:
     try:
         summary = (test._metadata.get('extra-summary')
                    or test._metadata.get('extra-task')
-                   or prepare_extra_summary(test, append_summary))
+                   or prepare_extra_summary(test))
     except ConvertError:
         summary = test.name
     if not dry_mode:
@@ -503,7 +485,7 @@ def export_to_nitrate(test: 'tmt.Test') -> None:
     # Remove unexpected general plans
     if general and nitrate_case:
         # Remove also all general plans linked to testcase
-        for nitrate_plan in list(nitrate_case.testplans):
+        for nitrate_plan in [plan for plan in nitrate_case.testplans]:
             if (nitrate_plan.type.name == "General"
                     and nitrate_plan not in expected_general_plans):
                 echo(style(
@@ -589,8 +571,10 @@ def export_to_nitrate(test: 'tmt.Test') -> None:
         }
     for section, attribute in section_to_attr.items():
         if attribute is None:
-            with suppress(tmt.utils.StructuredFieldError):
+            try:
                 struct_field.remove(section)
+            except tmt.utils.StructuredFieldError:
+                pass
         else:
             struct_field.set(section, attribute)
             echo(style(section + ': ', fg='green') + attribute.strip())
@@ -607,7 +591,7 @@ def export_to_nitrate(test: 'tmt.Test') -> None:
             'Add migration warning to the test case notes.', fg='green'))
 
     # ID
-    uuid = tmt.identifier.add_uuid_if_not_defined(test.node, dry_mode, test._logger)
+    uuid = tmt.identifier.add_uuid_if_not_defined(test.node, dry=dry_mode)
     if not uuid:
         uuid = test.node.get(tmt.identifier.ID_KEY)
     struct_field.set(tmt.identifier.ID_KEY, uuid)
@@ -655,20 +639,21 @@ def export_to_nitrate(test: 'tmt.Test') -> None:
     # Update nitrate test case
     if not dry_mode:
         nitrate_case.update()
-        echo(style(f"Test case '{nitrate_case.identifier}' successfully exported to nitrate.",
-                   fg='magenta'))
+        echo(style("Test case '{0}' successfully exported to nitrate.".format(
+            nitrate_case.identifier), fg='magenta'))
 
     # Optionally link Bugzilla to Nitrate case
-    if link_bugzilla and verifies_bug_ids and not dry_mode:
-        tmt.export.bz_set_coverage(verifies_bug_ids, nitrate_case.id, NITRATE_TRACKER_ID)
+    if link_bugzilla and verifies_bug_ids:
+        if not dry_mode:
+            tmt.export.bz_set_coverage(verifies_bug_ids, nitrate_case.id, NITRATE_TRACKER_ID)
 
 
 @tmt.base.Test.provides_export('nitrate')
 class NitrateExporter(tmt.export.ExportPlugin):
     @classmethod
     def export_test_collection(cls,
-                               tests: list[tmt.base.Test],
-                               keys: Optional[list[str]] = None,
+                               tests: List[tmt.base.Test],
+                               keys: Optional[List[str]] = None,
                                **kwargs: Any) -> str:
         for test in tests:
             export_to_nitrate(test)

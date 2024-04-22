@@ -26,7 +26,7 @@ def main(key, yaml_file):
 
 def find_value(data, key):
     if not isinstance(data, dict):
-        raise ValueError
+        raise ValueError()
     try:
         return data[key]
     except KeyError:
@@ -35,7 +35,7 @@ def find_value(data, key):
                 return find_value(value, key)
             except ValueError:
                 pass
-    return None
+    return
 
 
 if __name__ == "__main__":

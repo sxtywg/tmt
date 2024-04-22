@@ -7,6 +7,9 @@ description:
     role. Check that the page is correctly served to both clients.
 framework: shell
 test: cd data && tmt run -vvv
-tag+:
-  - provision-only
-  - provision-virtual
+
+enabled: false
+adjust:
+  - enabled: true
+    when: how == full
+    tag+: [additional_coverage]

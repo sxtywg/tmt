@@ -40,7 +40,7 @@ rlJournalStart
         run   "fail"   "/test/xfail-pass"     "pass"     1
         run   "errr"   "/test/xfail-error"    "error"    2
         run   "pass"   "/test/always-pass"    "fail"     0
-        run   "info"   "/test/always-info"    "pass"     0
+        run   "info"   "/test/always-info"    "pass"     2
         run   "warn"   "/test/always-warn"    "pass"     1
         run   "fail"   "/test/always-fail"    "pass"     1
         run   "errr"   "/test/always-error"   "pass"     2
@@ -85,13 +85,8 @@ EOF
     rlPhaseEnd
 
     rlPhaseStartTest "Verbose execute prints result - abort case"
-        rlRun -s "tmt run --id \${run} --scratch --until execute tests -n /abort provision --how container execute -v 2>&1 >/dev/null" "2"
+        rlRun -s "tmt run --id \${run} --scratch --until execute tests tests -n /abort provision --how container execute -v 2>&1 >/dev/null" "2"
         rlAssertGrep "00:00:00 errr /test/abort (on default-0) (aborted) [1/1" $rlRun_LOG -F
-    rlPhaseEnd
-
-    rlPhaseStartTest "Verify fmf context lands in results"
-        rlRun -s "tmt -c foo=bar run --id ${run} --scratch -a provision --how local test -n '/pass'"
-        rlAssertEquals "Context is stored in result" "$(yq -r ".[] | .context | to_entries[] | \"\\(.key)=\\(.value[])\"" $run/default/plan/execute/results.yaml)" "foo=bar"
     rlPhaseEnd
 
     rlPhaseStartCleanup

@@ -7,9 +7,8 @@ description: |
     testing, for example
     :ref:`/spec/plans/provision/virtual`,
     :ref:`/spec/plans/provision/container`,
-    :ref:`/spec/plans/provision/connect`,
-    :ref:`/spec/plans/provision/local` or
-    :ref:`/spec/plans/provision/artemis`.
+    :ref:`/spec/plans/provision/connect` or
+    :ref:`/spec/plans/provision/local`.
     See individual plugin documentation for details about
     supported options.
 
@@ -36,27 +35,10 @@ example: |
         testcloud (libvirt). Testcloud takes care of downloading
         an image and making necessary changes to it for optimal
         experience (such as disabling UseDNS and GSSAPI for SSH).
-
-    example:
-      - |
-        # Provision a fedora virtual machine
+    example: |
         provision:
             how: virtual
             image: fedora
-      - |
-        # Provision a virtual machine from a specific QCOW2 file,
-        # using specific memory and disk settings, using the fedora user,
-        # and using sudo to run scripts.
-        provision:
-            how: virtual
-            image: https://download.fedoraproject.org/pub/fedora/linux/releases/39/Cloud/x86_64/images/Fedora-Cloud-Base-39-1.5.x86_64.qcow2
-            user: fedora
-            become: true
-            # in MB
-            memory: 2048
-            # in GB
-            disk: 30
-
     link:
       - implemented-by: /tmt/steps/provision/testcloud.py
 
@@ -79,21 +61,10 @@ example: |
     description:
         Download (if necessary) and start a new container using
         podman or docker.
-
-    example:
-      - |
-        # Use the fedora:latest image
+    example: |
         provision:
             how: container
             image: fedora:latest
-      - |
-        # Use an image with a non-root user with sudo privileges,
-        # and run scripts with sudo.
-        provision:
-            how: container
-            image: image with non-root user with sudo privileges
-            user: tester
-            become: true
     link:
       - implemented-by: /tmt/steps/provision/podman.py
 
@@ -131,6 +102,11 @@ example: |
 
         __ https://github.com/neoave/mrack
 
+        .. note::
+
+            The beaker provision plugin is not available for
+            ``rhel-8`` or ``centos-stream-8``.
+
         .. versionadded:: 1.22
 
     example:
@@ -144,15 +120,10 @@ example: |
         provision:
             how: beaker
             image: Fedora-37%
-      - |
-        # Set custom whiteboard description (added in 1.30)
-        provision:
-            how: beaker
-            whiteboard: Just a smoke test for now
 
     link:
       - implemented-by: /tmt/steps/provision/mrack.py
-      - verified-by: /plans/provision/beaker
+      - verified-by: /tests/provision/beaker
 
 
 /connect:
@@ -165,9 +136,6 @@ example: |
             hostname or ip address of the box
         user
             user name to be used to log in, ``root`` by default
-        become
-            whether to run scripts with ``sudo``, ignored if user
-            is already root, ``false`` by default
         password
             user password to be used to log in
         key
@@ -177,31 +145,23 @@ example: |
     link:
       - implemented-by: /tmt/steps/provision/connect.py
 
-    example:
-      - |
-        # Connect to existing box with username and password
+    example: |
         provision:
             how: connect
             guest: hostname or ip address
             user: username
             password: password
 
-      - |
-        # Connect with user ``fedora`` using a key, and use
-        # ``sudo`` to run scripts
         provision:
             how: connect
             guest: hostname or ip address
-            user: fedora
-            become: true
             key: private-key-path
+
 
 /multihost:
     summary: Multihost testing specification
 
     description: |
-        .. versionchanged:: 1.24
-
         As a part of the provision step it is possible to request
         multiple guests to be provisioned for testing. Each guest
         has to be assigned a unique ``name`` which is used to
@@ -219,9 +179,9 @@ example: |
         :ref:`execution</spec/plans/discover/where>` should
         take place.
 
-        See :ref:`/spec/plans/guest-topology` for details on how
-        this information is exposed to tests and ``prepare`` and
-        ``finish`` tasks.
+        If guests need to be synchronized during the environment
+        preparation and test execution, group them under a common
+        dictionary which will ensure they are processed together.
 
     example: |
         # Request two guests
@@ -244,7 +204,17 @@ example: |
           - name: tester-two
             role: client
 
-    link:
-      - implemented-by: /tmt/steps/__init__.py
-      - implemented-by: /tmt/queue.py
-      - verified-by: /tests/multihost
+        # Synchronize guests using groups
+        provision:
+          - group: across-arches
+            guests:
+              - name: client-one
+                arch: s390x
+              - name: server-one
+                arch: ppc64le
+          - group: across-distros
+            guests:
+              - name: client-two
+                distro: centos-stream-8
+              - name: server-two
+                distro: centos-stream-9

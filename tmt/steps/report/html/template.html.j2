@@ -36,141 +36,57 @@
             margin: -1ex 0ex 1ex 7px;
         }
 
-        p.header {
-            margin: 30px 7px 10px 7px;
-        }
-
         p.footer {
             margin: 30px 7px 0px 7px;
         }
 
-        #results, #filters {
+        table {
             border-spacing: 7px;
         }
 
-        #results td, #results th {
+        td, th {
             padding: 0.7ex 1em;
         }
 
-        #results td {
+        td {
             background: #f8f8f8;
             border-radius: 0.5ex;
         }
 
-        #results td.result {
+        td.result {
             text-align: center;
             text-shadow: 0px 0px 5px #555;
             color: white;
-            width: 7ex;
         }
 
-        #results td.pass {
+        td.pass {
             background: #0a0;
         }
-        #results td.fail {
+
+        td.fail {
             background: #d30;
         }
-        #results td.info {
+
+        td.info {
             background: #58d;
         }
-        #results td.warn {
+
+        td.warn {
             background: #fc5;
         }
-        #results td.error {
+
+        td.error {
             background: #b4d;
         }
 
-        #results td.log {
+        td.log {
             word-spacing: 1ex;
         }
 
-        #results td.note {
+        td.note {
             color: #c00;
         }
-
-        #results tr.check {
-            font-size: 90%;
-        }
-
-        #results tr.check td.result {
-            width: 5ex;
-        }
-
-        #results tr.check td.name {
-            color: #888;
-            padding-left: 5ex;
-            width: 22ex;
-        }
-
-        .context-dimension {
-            display: inline-block;
-            text-align: center;
-            vertical-align: baseline;
-            white-space: nowrap;
-            border-radius: 0.5ex;
-            padding: 0.4ex 1ex;
-            background: #eee;
-            font-family: ui-monospace,monospace;
-            font-size: 90%;
-        }
-
     </style>
-    <script>
-        var filter_values = {
-            "pass": true,
-            "fail": true,
-            "info": true,
-            "warn": true,
-            "error": true,
-            "name": "",
-            "note": "",
-        };
-
-        // should a row be shown?
-        function valid_row(row) {
-            // checkboxes
-            const result = row.getElementsByClassName("result")[0].textContent;
-            if (!filter_values[result])
-                return false;
-            // name
-            const name = row.getElementsByClassName("name")[0].textContent;
-            if (filter_values["name"] && !name.match(filter_values["name"]))
-                return false;
-            // note (if it doesn't exist, treat it as empty)
-            let note = "";
-            const note_elem = row.getElementsByClassName("note")[0];
-            if (note_elem)
-                note = note_elem.textContent;
-            if (filter_values["note"] && !note.match(filter_values["note"]))
-                return false;
-            return true;
-        }
-
-        // show or hide results table rows
-        function update_rows() {
-            const rows = document.getElementById("results").rows;
-            for (let i = 1; i < rows.length; i++) {
-                if (valid_row(rows[i]))
-                    rows[i].style.removeProperty("display");
-                else
-                    rows[i].style.display = "none";
-            }
-        }
-
-        function filter_checkbox(e) {
-            const type = e.id.replace("filter_", "");
-            filter_values[type] = e.checked;
-            update_rows();
-        }
-        function filter_name(e) {
-            filter_values["name"] = e.value;
-            update_rows();
-        }
-        function filter_note(e) {
-            filter_values["note"] = e.value;
-            update_rows();
-        }
-    </script>
 </head>
 
 {% macro emit_guest(guest) %}
@@ -189,30 +105,8 @@
 <div>
 <h1>{{ plan.name }}</h1>
 {% if plan.summary %}<h2>{{ plan.summary }}</h2>{% endif %}
-
-{% if plan._fmf_context %}
-<p class="header">
-Context:
-{% for key, values in plan._fmf_context.items() %}
-<span class="context-dimension">{{ key }} = {{ values | join(", ") }}</span>
-{% endfor %}
-</p>
-{% endif %}
-
 {% if results %}
-<table id="filters">
-    <tr>
-        <td><label><input type="checkbox" id="filter_pass" onclick="filter_checkbox(this);" checked>pass</label></td>
-        <td><label><input type="checkbox" id="filter_fail" onclick="filter_checkbox(this);" checked>fail</label></td>
-        <td><label><input type="checkbox" id="filter_info" onclick="filter_checkbox(this);" checked>info</label></td>
-        <td><label><input type="checkbox" id="filter_warn" onclick="filter_checkbox(this);" checked>warn</label></td>
-        <td><label><input type="checkbox" id="filter_error" onclick="filter_checkbox(this);" checked>error</label></td>
-        <td><input type="search" placeholder="Filter test names" onchange="filter_name(this);"/></td>
-        <td><input type="search" placeholder="Filter note" onchange="filter_note(this);"/></td>
-    </tr>
-</table>
-
-<table id="results">
+<table>
     <thead>
         <tr>
             <th>Result</th>
@@ -221,11 +115,10 @@ Context:
             <th>Guest</th>
 {% endif %}
             <th>Logs</th>
-            <th>Data</th>
         </tr>
     </thead>
     {% for result in results %}
-    <tr class="result">
+    <tr class="result {{ loop.cycle('odd', 'even') }}">
         <td class="result {{ result.result.value|e }}">{{ result.result.value|e }}</td>
         <td class="name">{{ result.name|e }}</td>
 {% if display_guest %}
@@ -236,30 +129,10 @@ Context:
             <a href="{{ base_dir | linkable_path | urlencode }}/{{ log | urlencode }}">{{ log | basename }}</a>
         {% endfor %}
         </td>
-        <td class="data"><a href="{{ base_dir | linkable_path | urlencode }}/{{ result.data_path | urlencode }}">data</a></td>
         {% if result.note %}
         <td class="note">{{ result.note|e }}</td>
         {% endif %}
     </tr>
-    {% if result.check %}
-    <tr class="check">
-        <td colspan="4">
-            <table>
-                {% for check in result.check %}
-                <tr>
-                    <td class="result {{ check.result.value | e }}">{{ check.result.value | e }}</td>
-                    <td class="name">{{ check.name | e }} ({{ check.event.value }})</td>
-                    <td class="log">
-                        {% for log in check.log %}
-                        <a href="{{ base_dir | linkable_path | urlencode }}/{{ log | urlencode }}">{{ log | basename }}</a>
-                        {% endfor %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </table>
-        </td>
-    </tr>
-    {% endif %}
     {% endfor %}
 </table>
 {% else %}

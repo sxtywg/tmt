@@ -57,7 +57,7 @@ Virtualization Tips
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In order to safely run tests under a virtual machine started on
-your laptop you only need to install the ``tmt+provision-virtual``
+your laptop you only need to install the ``tmt-provision-virtual``
 package. By default the ``session`` connection is used so no other
 steps should be needed, just execute tests using the ``tmt run``
 command.
@@ -67,29 +67,21 @@ a few steps to set up your box. Here's just a couple of hints how
 to get the virtualization quickly working on your laptop. See the
 `Getting started with virtualization`__ docs to learn more.
 
-Make sure the ``libvirtd`` is running on your box:
-
-.. code-block:: shell
+Make sure the ``libvirtd`` is running on your box::
 
     sudo systemctl start libvirtd
 
-Add your user account to the libvirt group:
-
-.. code-block:: shell
+Add your user account to the libvirt group::
 
     sudo usermod -a -G libvirt $USER
 
 Note that you might need to restart your desktop session to get it
-fully working. Or at least start a new login shell:
-
-.. code-block:: shell
+fully working. Or at least start a new login shell::
 
     su - $USER
 
 In some cases you might also need to activate the default network
-device:
-
-.. code-block:: shell
+device::
 
     sudo virsh net-start default
 
@@ -104,9 +96,7 @@ Container Package Cache
 
 Using containers can speed up your testing. However, fetching
 package cache can slow things down substantially. Use this set of
-commands to prepare a container image with a fresh dnf cache:
-
-.. code-block:: shell
+commands to prepare a container image with a fresh dnf cache::
 
     podman run -itd --name fresh fedora
     podman exec fresh dnf makecache
@@ -114,9 +104,7 @@ commands to prepare a container image with a fresh dnf cache:
     podman commit fresh fedora:fresh
     podman container rm -f fresh
 
-Then specify the newly created image in the provision step:
-
-.. code-block:: shell
+Then specify the newly created image in the provision step::
 
     tmt run --all provision --how container --image fedora:fresh
 
@@ -173,9 +161,7 @@ How can I integrate tmt tests with other tools?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Each tmt test has a unique `fmf identifier`__ which can look like
-this:
-
-.. code-block:: yaml
+this::
 
     name: /tests/core/docs
     url: https://github.com/teemtee/tmt.git
@@ -184,9 +170,7 @@ this:
 These identifiers can be used for integration with other tools,
 for example to execute tmt tests using custom workflows. For this
 use case ``tmt tests export`` command can be used to produce a
-list of fmf identifiers of selected tests:
-
-.. code-block:: shell
+list of fmf identifiers of selected tests::
 
     tmt tests export --fmf-id | custom-workflow --fmf-id -
     tmt tests export core/docs --fmf-id | custom-workflow --fmf-id -
@@ -225,9 +209,7 @@ __ https://docs.fedoraproject.org/en-US/ci/standard-test-roles/
 Simple Script
 ------------------------------------------------------------------
 
-Running a simple binary using STI:
-
-.. code-block:: yaml
+Running a simple binary using STI::
 
     - hosts: localhost
       roles:
@@ -239,9 +221,7 @@ Running a simple binary using STI:
             dir: .
             run: binary --help
 
-The equivalent ``tmt`` plan has only two lines:
-
-.. code-block:: yaml
+The equivalent ``tmt`` plan has only two lines::
 
     execute:
         script: binary --help
@@ -255,9 +235,7 @@ Required Packages
 This example prepares testing environment by installing
 required packages.
 
-STI example:
-
-.. code-block:: yaml
+STI example::
 
     - hosts: localhost
       tags:
@@ -274,9 +252,7 @@ STI example:
         - libtool
         - gettext
 
-tmt example plan (L2 metadata):
-
-.. code-block:: yaml
+tmt example plan (L2 metadata)::
 
     summary: Check basic command line options
     prepare:
@@ -296,9 +272,7 @@ Remote Repository
 Tests in the following example are fetched from a remote
 repository and filtered by the provided condition.
 
-STI example:
-
-.. code-block:: yaml
+STI example::
 
     - hosts: localhost
       roles:
@@ -310,9 +284,7 @@ STI example:
           dest: "shell"
           fmf_filter: "tier: 1"
 
-tmt example plan (L2 metadata):
-
-.. code-block:: yaml
+tmt example plan (L2 metadata)::
 
     summary: Tier 1 shell test plan
     discover:
@@ -331,9 +303,7 @@ and each original test is stored in a separate L1 metadata file
 (test). This approach allows the setup of different environment
 variables and required packages for each test.
 
-STI example:
-
-.. code-block:: yaml
+STI example::
 
     - hosts: localhost
       roles:
@@ -358,16 +328,14 @@ STI example:
 
 tmt example: plan (L2 metadata) and tests (L1 metadata)
 
-.. code-block:: yaml
-   :caption: plans/example.fmf
+plans/example.fmf::
 
     discover:
         how: fmf
     execute:
         how: tmt
 
-.. code-block:: yaml
-   :caption: tests/smoke27.fmf
+tests/smoke27.fmf::
 
     test: ./venv.sh
     environment:
@@ -378,8 +346,7 @@ tmt example: plan (L2 metadata) and tests (L1 metadata)
       - python2-virtualenv
       - python2-devel
 
-.. code-block:: yaml
-   :caption: tests/smoke37.fmf
+tests/smoke37.fmf::
 
     test: ./venv.sh
     environment:
@@ -399,9 +366,7 @@ Dist Git Source
 Use the ``dist-git-source`` feature of the ``discover`` step to
 extract tests from the (rpm) sources.
 
-STI example:
-
-.. code-block:: yaml
+STI example::
 
     - hosts: localhost
       tags:
@@ -409,55 +374,11 @@ STI example:
       roles:
       - role: standard-test-source
 
-tmt example plan (L2 metadata):
-
-.. code-block:: yaml
+tmt example plan (L2 metadata)::
 
     discover:
-        how: shell
+        how: fmf
         dist-git-source: true
 
-See the :ref:`/spec/plans/discover/dist-git-source` documentation for
+See the :ref:`/spec/plans/discover/fmf` plugin documentation for
 more details.
-
-
-Migrating provision.fmf
-------------------------------------------------------------------
-
-The ``provision.fmf`` file is used to specify storage and network
-devices. In this migration, the contents of the ``provision.fmf``
-file are moved to the ``provision`` step under ``hardware``
-specification.
-
-``provision.fmf`` example:
-
-.. code-block:: yaml
-
-    standard-inventory-qcow2:
-        qemu:
-            drive:
-                - size: 10737418240
-                - size: 10737418240
-                - size: 10737418240
-
-tmt example plan (L2 metadata):
-
-.. code-block:: yaml
-
-    provision:
-        how: virtual
-        hardware:
-            disk:
-                - size: ">10GiB"
-                - size: ">10GiB"
-                - size: ">10GiB"
-
-See the :ref:`/spec/hardware/disk` and :ref:`/spec/hardware/network`
-documentation for more details about these hardware specifications
-in tmt plans.
-
-If you were using ``provision.fmf`` with Testing Farm, check out
-the `Testing Farm docs`__ on this HW requirement for more details
-and how Testing Farm works with tmt metadata.
-
-__ https://docs.testing-farm.io/general/0.1/test-request.html

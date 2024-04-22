@@ -1,8 +1,7 @@
 """ Test Management Tool """
 
-import importlib.metadata
-
-__version__ = importlib.metadata.version(__name__)
+# Version is replaced before building the package
+__version__ = 'running from the source'
 
 __all__ = [
     'Tree',

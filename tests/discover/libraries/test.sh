@@ -15,6 +15,12 @@ rlJournalStart
         rlAssertGrep "Fetch library 'openssl/certgen'" $rlRun_LOG
     rlPhaseEnd
 
+    rlPhaseStartTest "Apache"
+        rlRun -s "$tmt apache"
+        rlAssertGrep "Fetch library 'httpd/http'" $rlRun_LOG
+        rlAssertGrep "Fetch library 'openssl/certgen'" $rlRun_LOG
+    rlPhaseEnd
+
     rlPhaseStartTest "Recommend"
         rlRun -s "$tmt recommend" 0
         rlAssertGrep "Fetch library 'openssl/certgen'" $rlRun_LOG
@@ -26,9 +32,8 @@ rlJournalStart
     rlPhaseEnd
 
     rlPhaseStartTest "Destination"
-        rlRun -s "tmt run --id $tmp/destination --keep discover -vvvddd plan --name destination"
-        rlAssertGrep "custom/example" $rlRun_LOG -s
-        rlAssertExists "$tmp/destination/plan/certificate/destination/discover/default-0/custom/example/file/lib.sh"
+        rlRun -s "$tmt destination" 0
+        rlAssertGrep 'Cloning into.*custom/openssl' $rlRun_LOG
     rlPhaseEnd
 
     rlPhaseStartTest "Missing"
@@ -44,6 +49,7 @@ rlJournalStart
 
     rlPhaseStartTest "Deep"
         rlRun -s "$tmt file"
+        rlAssertGrep 'the library is stored deep.' $rlRun_LOG
     rlPhaseEnd
 
     rlPhaseStartTest "Strip git suffix"
@@ -51,24 +57,11 @@ rlJournalStart
         rlAssertGrep "summary: 3 tests selected" $rlRun_LOG
         rlAssertGrep "/strip_git_suffix/test2" $rlRun_LOG
         rlAssertGrep \
-            "Detected library.*https://github.com/teemtee/fmf.git" \
+            "Detected library '{'url': 'https://github.com/teemtee/fmf.git'}'." \
             "$rlRun_LOG"
         rlAssertNotGrep 'Library.*conflicts with already fetched library' \
             "$rlRun_LOG"
     rlPhaseEnd
-
-    rlPhaseStartTest "Attempt github/beakerlib lookup just once per repo"
-        rlRun "tmt run --id $tmp/querying plan --name querying discover"
-        # We attempted to clone
-        rlAssertGrep "git clone .*beakerlib/FOOBAR" "$tmp/querying/log.txt"
-        # We know it doesn't exist
-        rlAssertGrep "Repository 'https://github.com/beakerlib/FOOBAR' not found." "$tmp/querying/log.txt"
-        # We do two attempts for clone (with --depth=1 and without it)
-        LINES=$(grep "git clone .*beakerlib/FOOBAR" "$tmp/querying/log.txt" | wc -l)
-        rlAssertEquals "Just two clone calls on non-existent repository" "2" "$LINES"
-        # However we do it all just once
-        LINES=$(grep "Repository 'https://github.com/beakerlib/FOOBAR' not found." "$tmp/querying/log.txt" | wc -l)
-        rlAssertEquals "Just one attempt on non-existent repository" "1" "$LINES"
 
     rlPhaseStartCleanup
         rlRun "popd"

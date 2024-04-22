@@ -1,6 +1,4 @@
 framework: shell
-require: []
-
 enabled: false
 adjust:
   - when: how == artemis

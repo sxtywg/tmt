@@ -1,14 +1,17 @@
 duration: 10m
-tier: 4
 
 /full:
-    summary: Perform a full distro upgrade
+    summary: Perform a full upgrade from F35 to F36
     test: ./full.sh
     # dnf upgrade is run, this may take quite long
     duration: 1h
-    tag+:
-      - provision-only
-      - provision-virtual
+    # requires nested virtualization (runs in VM)
+    enabled: false
+    adjust:
+    - enabled: true
+      when: how == full
+      tag+: [additional_coverage]
+    tier: 3
 
 /simple:
     summary: Run a single task from upgrades repo
@@ -18,11 +21,6 @@ tier: 4
     summary: Override the filter in remote upgrade path
     test: ./override.sh
 
-/ignore-test:
+/ignore_test:
     summary: Ignore test -n run subcommand in remote repo
     test: ./ignore-test.sh
-
-/local:
-    summary: Plan and upgrade path in the local repo
-    framework: shell
-    test: cd local && tmt run -vvv --remove plan --name plan

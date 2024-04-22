@@ -8,23 +8,21 @@ rlJournalStart
     rlPhaseEnd
 
     rlPhaseStartTest 'Command-line'
-        rlRun -s 'tmt run -rdv discover --how fmf --ref 8329db0 \
+        rlRun 'tmt run -rdv discover --how fmf --ref 8329db0 \
             --modified-only --modified-ref 8329db0^ \
-            plan -n features/core finish >/dev/null'
-        rlAssertGrep 'summary: 1 test selected' "$rlRun_LOG"
-        rlAssertGrep '/tests/core/adjust' "$rlRun_LOG"
+            plan -n features/core finish 2>&1 >/dev/null | tee output'
+        rlAssertGrep 'summary: 1 test selected' output
+        rlAssertGrep '/tests/core/adjust' output
     rlPhaseEnd
 
     rlPhaseStartTest 'Plan'
-        rlRun -s 'env -C data tmt run -rdv discover \
-            plan -n fmf/modified finish >/dev/null'
-        rlAssertGrep 'summary: 1 test selected' "$rlRun_LOG"
-        rlAssertGrep '/tests/core/adjust' "$rlRun_LOG"
+        rlRun 'env -C data tmt run -rdv discover \
+            plan -n fmf/modified finish 2>&1 >/dev/null | tee output'
+        rlAssertGrep 'summary: 1 test selected' output
+        rlAssertGrep '/tests/core/adjust' output
     rlPhaseEnd
 
-    rlPhaseStartTest 'No changes'
-        rlRun -s 'env -C data tmt run -rdv discover \
-            plan -n fmf/empty-modified >/dev/null'
-        rlAssertGrep 'summary: 0 tests selected' "$rlRun_LOG"
+    rlPhaseStartCleanup
+        rlRun 'rm -f output' 0 'Remove tmp file'
     rlPhaseEnd
 rlJournalEnd

@@ -8,11 +8,12 @@ rlJournalStart
     rlPhaseEnd
 
     rlPhaseStartTest
-        rlRun -s "tmt run -dddvvvr"
-        rlAssertGrep "Flexible Metadata Format" "$rlRun_LOG"
+        rlRun "tmt run -dddvvvr 2>&1 >/dev/null | tee output"
+        rlAssertGrep "Test Management Tool" "output"
     rlPhaseEnd
 
     rlPhaseStartCleanup
+        rlRun "rm -f output"
         rlRun "popd"
     rlPhaseEnd
 rlJournalEnd

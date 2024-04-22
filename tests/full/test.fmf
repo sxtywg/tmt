@@ -24,8 +24,6 @@ adjust:
 - when: distro != fedora
   require+:
   - library(epel/epel)
-check:
-  - avc
 require:
 - rsync
 - git-core
@@ -36,7 +34,7 @@ require:
 recommend:
 - guestfs-tools
 - python3-docutils
-duration: 12h
+duration: 4h
 extra-hardware: |
   keyvalue=HVM=1
   hostrequire=memory >= 6144

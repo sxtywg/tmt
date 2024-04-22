@@ -1,33 +1,12 @@
-summary: |
-    Select or provision a guest with given system properties.
-
-description: |
-    .. code-block::
-
-       system:
-           # Number or string, an ID of the device vendor.
-           vendor: 1234|"> 1234"
-
-           # String, a name of the device vendor.
-           vendor-name: "A Well-Known Device Manufacturer"
-
-           # Integer or string, system model ID.
-           model: 1234|"> 1234"
-
-           # String, system model name.
-           model-name: ProLiant DL385 Gen10
-
-           # Integer or string, required number of NUMA nodes.
-           numa-nodes: 2|">= 2"
-
+summary:
+    Select machine with given system attributes
+description:
+    Use the ``vendor`` key to choose system by specific vendor,
+    ``model`` to provide system's model name, ``numa-nodes``
+    to select systems with a given number of NUMA nodes.
 example:
   - |
-    # Select any system by a given vendor
     system:
-        vendor-name: "~ HPE"
-
-  - |
-    # Select any HPE system with enough NUMA nodes.
-    system:
-        vendor-name: "~ HPE"
-        numa-nodes: ">= 4"
+        vendor: HPE
+        model: ProLiant DL385 Gen10
+        numa-nodes: '>= 2'

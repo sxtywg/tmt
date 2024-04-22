@@ -3,7 +3,6 @@
 
 rlJournalStart
     rlPhaseStartSetup
-        rlRun "PROVISION_HOW=${PROVISION_HOW:-local}"
         rlRun "tmp=\$(mktemp -d)" 0 "Create tmp directory"
         rlRun "run=\$(mktemp -d)" 0 "Create run directory"
         rlRun "pushd $tmp"
@@ -12,22 +11,24 @@ rlJournalStart
         rlRun "tmt test create --template shell /test"
     rlPhaseEnd
 
-    rlPhaseStartTest "Test $PROVISION_HOW"
-        # Run until execute
-        tmt="tmt run --id $run --verbose"
-        rlRun "$tmt --all --scratch --before execute provision -h $PROVISION_HOW"
+    for method in ${PROVISION_METHODS:-local}; do
+        rlPhaseStartTest "Test $method"
+            # Run until execute
+            tmt="tmt run --id $run --verbose"
+            rlRun "$tmt --all --scratch --before execute provision -h $method"
 
-        # Failing test
-        rlRun "echo -e '#!/bin/bash\n/bin/false' > test/test.sh"
-        rlRun "$tmt discover --force execute --force" 1 "Failing test"
+            # Failing test
+            rlRun "echo -e '#!/bin/bash\n/bin/false' > test/test.sh"
+            rlRun "$tmt discover --force execute --force" 1 "Failing test"
 
-        # Fixed test
-        rlRun "echo -e '#!/bin/bash\n/bin/true' > test/test.sh"
-        rlRun "$tmt discover --force execute --force" 0 "Fixed test"
+            # Fixed test
+            rlRun "echo -e '#!/bin/bash\n/bin/true' > test/test.sh"
+            rlRun "$tmt discover --force execute --force" 0 "Fixed test"
 
-        # Clenup until finish
-        rlRun "$tmt --until finish"
-    rlPhaseEnd
+            # Clenup until finish
+            rlRun "$tmt --until finish"
+        rlPhaseEnd
+    done
 
     rlPhaseStartCleanup
         rlRun "popd"

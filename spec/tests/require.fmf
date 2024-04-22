@@ -1,10 +1,9 @@
-summary: Packages, libraries or files required for test execution
+summary: Packages or libraries required for test execution
 
 story:
-    As a tester I want to specify packages, libraries and files
-    which are required by the test and need to be installed on or
-    copied over to the system so that the test can be successfully
-    executed.
+    As a tester I want to specify packages and libraries which are
+    required by the test and need to be installed on the system so
+    that the test can be successfully executed.
 
 description: |
     In order to execute the test, additional packages may need to
@@ -23,14 +22,6 @@ description: |
     both the backward-compatible syntax ``library(repo/lib)``
     which fetches libraries from the `default location`__ as well
     as provide a ``dictionary`` with a full `fmf identifier`__.
-    For the latter case specify ``type: library``.
-
-    When referencing local files or directories use ``type: file``
-    and define list of paths relative to the fmf root directory.
-    These can be regular expressions to match multiple files or
-    directories or just a single file or directory name. By
-    default everything under test :ref:`/spec/tests/path` is
-    copied over to the system.
 
     By default, fetched repositories are stored in the discover
     step workdir under the ``libs`` directory. Use optional key
@@ -71,40 +62,22 @@ example:
   - |
     # Library from a custom remote git repository
     require:
-      - type: library
-        url: https://github.com/beakerlib/openssl
+      - url: https://github.com/beakerlib/openssl
         name: /certgen
 
   - |
     # Library from the local filesystem
     require:
-      - type: library
-        path: /tmp/library/openssl
+      - path: /tmp/library/openssl
         name: /certgen
 
   - |
     # Use a custom git ref and nick for the library
     require:
-      - type: library
-        url: https://github.com/redhat-qe-security/certgen
+      - url: https://github.com/redhat-qe-security/certgen
         ref: devel
         nick: openssl
         name: /certgen
-
-  - |
-    # Require local files needed for the library or test
-    require:
-      - type: file
-        pattern:
-          - /include
-          - /Library/common/helper.sh
-          - /files/photos/IMG.*
-
-  - |
-    # Require whole fmf tree
-    require:
-      - type: file
-        pattern: /
 
 link:
   - implemented-by: /tmt/base.py

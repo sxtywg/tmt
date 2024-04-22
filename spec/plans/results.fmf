@@ -8,26 +8,16 @@ description: |
     and custom test results are required to follow it when creating their
     ``results.yaml`` file.
 
-    Tests may choose JSON instead of YAML for their custom results file and
-    create ``results.json`` file, but tmt itself will always stick to YAML,
-    the final results would be provided in ``results.yaml`` file in any case.
-
-    Results are saved as a single list of dictionaries, each describing
-    a single test result.
+    Results are saved as a YAML file, containing a single list of mappings,
+    one mapping describing a single test result.
 
     .. code-block::
 
        # String, name of the test.
        name: /test/one
 
-       # fmf ID of the test.
-       fmf_id:
-         url: http://some.git.host.com/project/tests.git
-         name: /test/one
-         path: /
-
        # String, outcome of the test execution.
-       result: "pass"|"fail"|"info"|"warn"|"error"|"skip"
+       result: "pass"|"fail"|"info"|"warn"|"error"
 
        # String, optional comment to report with the result.
        note: "Things were great."
@@ -43,68 +33,16 @@ description: |
          some-id: foo
          another-id: bar
 
-       # String, when the test started, in an ISO 8601 format.
-       start-time: "yyyy-mm-ddThh:mm:ss.mmmmm+ZZ:ZZ"
-
-       # String, when the test finished, in an ISO 8601 format.
-       end-time: "yyyy-mm-ddThh:mm:ss.mmmmm+ZZ:ZZ"
-
        # String, how long did the test run.
        duration: hh:mm:ss
 
        # Integer, serial number of the test in the sequence of all tests of a plan.
-       serial-number: 1
+       serialnumber: 1
 
        # Mapping, describes the guest on which the test was executed.
        guest:
          name: client-1
          role: clients
-
-       # String, path to /data directory storing possible test artifacts
-       data-path: path/to/test/data
-
-       # Mapping, stores the actual fmf context defined for this test.
-       # It's a combination of the context provided via command line
-       # and plan's `context` key.
-       context:
-         some-dimension:
-           - its-value
-         another-dimension:
-           - first-value
-           - second-value
-             ...
-
-      # Represents results of all test checks executed as driven by test's `check`
-      # key. Fields have the same meaning as fields of the "parent" test result, but
-      # relate to each check alone.
-      check:
-          # String, outcome of the test execution.
-        - result: "pass"|"fail"|"info"|"warn"|"error"|"skip"
-
-          # String, optional comment to report with the result.
-          note: "Things were great."
-
-          # List of strings, paths to file logs.
-          log:
-            - path/to/check/log1
-            - path/to/check/log1
-              ...
-
-          # String, when the check started, in an ISO 8601 format.
-          start-time: "yyyy-mm-ddThh:mm:ss.mmmmm+ZZ:ZZ"
-
-          # String, when the check finished, in an ISO 8601 format.
-          end-time: "yyyy-mm-ddThh:mm:ss.mmmmm+ZZ:ZZ"
-
-          # String, how long did the check run.
-          duration: hh:mm:ss
-
-          # String, name of the check. Corresponds to the name of the check
-          # specified in test metadata.
-          name: dummy
-
-          # String, the place in test workflow when the check was executed.
-          event: "before-test"|"after-test"
 
     The ``result`` key can have the following values:
 
@@ -113,10 +51,10 @@ description: |
 
     info
         Test finished but only produced an informational
-        message. Represents a soft pass, used for tests
-        with the :ref:`/spec/tests/result` attribute set
-        to ``info``. Automation must treat this as a
-        passed test.
+        message. Represents a soft pass, used for skipped
+        tests and for tests with the :ref:`/spec/tests/result`
+        attribute set to ``ignore``. Automation must treat
+        this as a passed test.
 
     warn
         A problem appeared during test execution which does
@@ -133,20 +71,9 @@ description: |
     fail
         Test execution successfully finished and failed.
 
-    skip
-        Test was discovered but not executed. Can be used when
-        a single process produces multiple results but not all
-        tests were run.
-
-    The ``name`` and ``result`` keys are required. Also, ``name``, ``result``,
-    and ``event`` keys are required for entries under ``check`` key. Custom
-    result files may omit all other keys, although tmt plugins will strive to
-    provide as many keys as possible.
-
-    When importing the :ref:`custom results file </spec/tests/result>`, each
-    test name referenced in the file by the ``name`` key would be prefixed by
-    the original test name. A special case, ``name: /``, sets the result for
-    the original test itself.
+    The ``name`` and ``result`` keys are required. Custom result files
+    may omit all other keys, although tmt plugins will strive to provide
+    as many keys as possible.
 
     The ``log`` key must list **relative** paths. Paths in the custom
     results file are treated as relative to ``${TMT_TEST_DATA}`` path.
@@ -156,129 +83,51 @@ description: |
     The first ``log`` item is considered to be the "main" log, presented
     to the user by default.
 
-    The ``serial-number``, ``guest`` and ``fmf_id`` keys, if present in the
-    custom results file, will be overwritten by tmt during their import after
+    The ``serialnumber`` and ``guest`` keys, if present in the custom
+    results file, will be overwritten by tmt during their import after
     test completes. This happens on purpose, to assure this vital
     information is correct.
 
-    Similarly, the ``duration``, ``start-time`` and ``end-time`` keys, if
-    present in the special custom result, representing the original test
-    itself - ``name: /`` -, will be overwritten by tmt with actual
-    observed values. This also happens on purpose: while tmt cannot
-    tell how long it took to produce various custom results, it is still
-    able to report the duration of the whole test.
-
-    The same applies to ``context``, tmt will set this key for the
-    original test result in the custom result set to the value known
-    to tmt.
-
     See also the complete `JSON schema`__.
-
-    For custom results files in JSON format, the same rules and schema
-    apply.
-
-    .. versionchanged:: 1.30
-       fmf context is now saved within results, in the ``context`` key.
 
     __ https://github.com/teemtee/tmt/blob/main/tmt/schemas/results.yaml
 
 example:
   - |
     # Example content of results.yaml
+
     - name: /test/passing
       result: pass
-      serial-number: 1
-      log:
-        - pass_log
-      start-time: "2023-03-10T09:44:14.439120+00:00"
-      end-time: "2023-03-10T09:44:24.242227+00:00"
-      duration: 00:00:09
-      note: good result
-      ids:
-        extra-nitrate: some-nitrate-id
-      guest:
-        name: default-0
-
-    - name: /test/failing
-      result: fail
-      serial-number: 2
-      log:
-        - fail_log
-        - another_log
-      start-time: "2023-03-10T09:44:14.439120+00:00"
-      end-time: "2023-03-10T09:44:24.242227+00:00"
-      duration: 00:00:09
-      note: fail result
-      guest:
-        name: default-0
-
-  - |
-    # Example content of custom results file
-    - name: /test/passing
-      result: pass
+      serialnumber: 1
       log:
         - pass_log
       duration: 00:11:22
       note: good result
       ids:
         extra-nitrate: some-nitrate-id
+      guest:
+        name: default-0
 
     - name: /test/failing
       result: fail
+      serialnumber: 2
       log:
         - fail_log
         - another_log
       duration: 00:22:33
       note: fail result
+      guest:
+        name: default-0
 
   - |
     # Example of a perfectly valid, yet stingy custom results file
+
     - name: /test/passing
       result: pass
 
     - name: /test/failing
       result: fail
 
-  - |
-    # Example of test check results
-    - name: /test/passing
-      result: pass
-      serial-number: 1
-      log:
-        - pass_log
-      start-time: "2023-03-10T09:44:14.439120+00:00"
-      end-time: "2023-03-10T09:44:24.242227+00:00"
-      duration: 00:00:09
-      note: good result
-      ids:
-        extra-nitrate: some-nitrate-id
-      guest:
-        name: default-0
-      check:
-        - name: abrt
-          event: after-test
-          result: pass
-          log: []
-          note:
-        - name: kernel-panic
-          event: after-test
-          result: pass
-          log: []
-          note:
-
-  - |
-    # syntax: json
-    /* Example content of custom results.json */
-    [
-      {
-        "name": "/test/passing",
-        "result": "pass",
-        "log": ["pass_log"],
-        "duration": "00:11:22",
-        "note": "good result"
-      }
-    ]
-
 link:
   - verified-by: /tests/execute/result
-  - implemented-by: /tmt/result.py
+  - implemented-by: /tmp/result.py

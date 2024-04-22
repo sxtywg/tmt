@@ -1,7 +1,7 @@
 import copy
 import dataclasses
 import shutil
-from typing import Any, Optional, TypeVar, cast
+from typing import Any, Dict, List, Optional, Type, TypeVar, cast
 
 import click
 import fmf
@@ -12,26 +12,16 @@ import tmt.log
 import tmt.steps
 import tmt.steps.discover
 import tmt.utils
-from tmt.steps.prepare.distgit import insert_to_prepare_step
-from tmt.utils import (
-    Command,
-    Environment,
-    EnvVarValue,
-    Path,
-    SerializableContainer,
-    ShellScript,
-    SpecBasedContainer,
-    field,
-    )
+from tmt.utils import Command, Path, ShellScript, field
 
 T = TypeVar('T', bound='TestDescription')
 
 
 @dataclasses.dataclass
 class TestDescription(
-        SpecBasedContainer[dict[str, Any], dict[str, Any]],
+        tmt.utils.SpecBasedContainer,
         tmt.utils.NormalizeKeysMixin,
-        SerializableContainer):
+        tmt.utils.SerializableContainer):
     """
     Keys necessary to describe a shell-based test.
 
@@ -49,7 +39,7 @@ class TestDescription(
     # soon as possible - nobody want's to keep two very same lists of attributes.
     test: ShellScript = field(
         default=ShellScript(''),
-        normalize=lambda key_address, raw_value, logger: ShellScript(raw_value),
+        normalize=lambda raw_value, logger: ShellScript(raw_value),
         serialize=lambda test: str(test),
         unserialize=lambda serialized_test: ShellScript(serialized_test)
         )
@@ -61,42 +51,44 @@ class TestDescription(
     order: int = field(
         # TODO: ugly circular dependency (see tmt.base.DEFAULT_ORDER)
         default=50,
-        normalize=lambda key_address, raw_value, logger:
-            50 if raw_value is None else int(raw_value)
+        normalize=lambda raw_value, logger: 50 if raw_value is None else int(raw_value)
         )
     link: Optional[tmt.base.Links] = field(
         default=None,
-        normalize=lambda key_address, raw_value, logger: tmt.base.Links(data=raw_value),
+        normalize=lambda raw_value, logger: tmt.base.Links(data=raw_value),
         # Using `to_spec()` on purpose: `Links` does not provide serialization
         # methods, because specification of links is already good enough. We
         # can use existing `to_spec()` method, and undo it with a simple
         # `Links(...)` call.
-        serialize=lambda link: link.to_spec() if link else None,
+        #
+        # ignore[attr-defined]: mypy reports `to_spec` to be an unknown attribute,
+        # but reveal_type() reports `link` to be a known type, not Any, and it's
+        # not clear why would mypy misread the situation.
+        serialize=lambda link: link.to_spec() if link else None,  # type: ignore[attr-defined]
         unserialize=lambda serialized_link: tmt.base.Links(data=serialized_link)
         )
     id: Optional[str] = None
-    tag: list[str] = field(
+    tag: List[str] = field(
         default_factory=list,
         normalize=tmt.utils.normalize_string_list
         )
     tier: Optional[str] = field(
         default=None,
-        normalize=lambda key_address, raw_value, logger:
-            None if raw_value is None else str(raw_value)
+        normalize=lambda raw_value, logger: None if raw_value is None else str(raw_value)
         )
-    adjust: Optional[list[tmt.base._RawAdjustRule]] = field(
+    adjust: Optional[List[tmt.base._RawAdjustRule]] = field(
         default=None,
-        normalize=lambda key_address, raw_value, logger: [] if raw_value is None else (
+        normalize=lambda raw_value, logger: [] if raw_value is None else (
             [raw_value] if not isinstance(raw_value, list) else raw_value
             )
         )
 
     # Basic test information
-    contact: list[str] = field(
+    contact: List[str] = field(
         default_factory=list,
         normalize=tmt.utils.normalize_string_list
         )
-    component: list[str] = field(
+    component: List[str] = field(
         default_factory=list,
         normalize=tmt.utils.normalize_string_list
         )
@@ -105,31 +97,27 @@ class TestDescription(
     path: Optional[str] = None
     framework: Optional[str] = None
     manual: bool = False
-    tty: bool = False
-    require: list[tmt.base.Dependency] = field(
+    require: List[tmt.base.Require] = field(
         default_factory=list,
         normalize=tmt.base.normalize_require,
         serialize=lambda requires: [require.to_spec() for require in requires],
         unserialize=lambda serialized_requires: [
-            tmt.base.dependency_factory(require) for require in serialized_requires
+            tmt.base.RequireSimple.from_spec(require)
+            if isinstance(require, str) else tmt.base.RequireFmfId.from_spec(require)
+            for require in serialized_requires
             ]
         )
-    recommend: list[tmt.base.Dependency] = field(
+    recommend: List[tmt.base.Require] = field(
         default_factory=list,
         normalize=tmt.base.normalize_require,
         serialize=lambda recommends: [recommend.to_spec() for recommend in recommends],
         unserialize=lambda serialized_recommends: [
-            tmt.base.DependencySimple.from_spec(recommend)
-            if isinstance(recommend, str) else tmt.base.DependencyFmfId.from_spec(recommend)
+            tmt.base.RequireSimple.from_spec(recommend)
+            if isinstance(recommend, str) else tmt.base.RequireFmfId.from_spec(recommend)
             for recommend in serialized_recommends
             ]
         )
-    environment: tmt.utils.Environment = field(
-        default_factory=tmt.utils.Environment,
-        normalize=tmt.utils.Environment.normalize,
-        serialize=lambda environment: environment.to_fmf_spec(),
-        unserialize=lambda serialized: tmt.utils.Environment.from_fmf_spec(serialized),
-        exporter=lambda environment: environment.to_fmf_spec())
+    environment: tmt.utils.EnvironmentType = field(default_factory=dict)
     duration: str = '1h'
     result: str = 'respect'
 
@@ -137,8 +125,8 @@ class TestDescription(
     # type than the one declared in superclass.
     @classmethod
     def from_spec(  # type: ignore[override]
-            cls: type[T],
-            raw_data: dict[str, Any],
+            cls: Type[T],
+            raw_data: Dict[str, Any],
             logger: tmt.log.Logger) -> T:
         """ Convert from a specification file or from a CLI option """
 
@@ -147,7 +135,7 @@ class TestDescription(
 
         return data
 
-    def to_spec(self) -> dict[str, Any]:
+    def to_spec(self) -> Dict[str, Any]:
         """ Convert to a form suitable for saving in a specification file """
 
         data = super().to_spec()
@@ -161,11 +149,11 @@ class TestDescription(
 
 @dataclasses.dataclass
 class DiscoverShellData(tmt.steps.discover.DiscoverStepData):
-    tests: list[TestDescription] = field(
+    tests: List[TestDescription] = field(
         default_factory=list,
-        normalize=lambda key_address, raw_value, logger: [
+        normalize=lambda raw_value, logger: [
             TestDescription.from_spec(raw_datum, logger)
-            for raw_datum in cast(list[dict[str, Any]], raw_value)
+            for raw_datum in cast(List[Dict[str, Any]], raw_value)
             ],
         serialize=lambda tests: [
             test.to_serialized()
@@ -177,107 +165,84 @@ class DiscoverShellData(tmt.steps.discover.DiscoverStepData):
             ]
         )
 
-    url: Optional[str] = field(
+    url: Optional[str] = tmt.utils.field(
         option="--url",
         metavar='REPOSITORY',
         default=None,
         help="URL of the git repository with tests to be fetched.")
 
-    ref: Optional[str] = field(
+    ref: Optional[str] = tmt.utils.field(
         option="--ref",
         metavar='REVISION',
         default=None,
         help="Branch, tag or commit specifying the git revision.")
 
-    keep_git_metadata: Optional[bool] = field(
+    keep_git_metadata: Optional[bool] = tmt.utils.field(
         option="--keep-git-metadata",
         is_flag=True,
         default=False,
         help="Keep the git metadata if a repo is synced to guest.")
 
-    def to_spec(self) -> tmt.steps._RawStepData:
-        """ Convert to a form suitable for saving in a specification file """
-
-        data = super().to_spec()
-        # ignore[typeddict-unknown-key]: the `tests` key is unknown to generic raw step data,
-        # but it's right to be here.
-        data['tests'] = [  # type: ignore[typeddict-unknown-key]
-            test.to_spec() for test in self.tests
-            ]
-
-        return data
-
 
 @tmt.steps.provides_method('shell')
-class DiscoverShell(tmt.steps.discover.DiscoverPlugin[DiscoverShellData]):
+class DiscoverShell(tmt.steps.discover.DiscoverPlugin):
     """
-    Use provided list of shell script tests.
+    Use provided list of shell script tests
 
     List of test cases to be executed can be defined manually directly
     in the plan as a list of dictionaries containing test name, actual
     test script and optionally a path to the test. Example config:
 
-    .. code-block:: yaml
+    discover:
+        how: shell
+        tests:
+        - name: /help/main
+          test: tmt --help
+        - name: /help/test
+          test: tmt test --help
+        - name: /help/smoke
+          test: ./smoke.sh
+          path: /tests/shell
 
-        discover:
-            how: shell
-            tests:
-              - name: /help/main
-                test: tmt --help
-              - name: /help/test
-                test: tmt test --help
-              - name: /help/smoke
-                test: ./smoke.sh
-                path: /tests/shell
+    For DistGit repo one can extract source tarball and use its code.
+    It is extracted to TMT_SOURCE_DIR however no patches are applied
+    (only source tarball is extracted).
 
-    For DistGit repo one can download sources and use code from them in the tests.
-    Sources are extracted into ``$TMT_SOURCE_DIR``, patches are applied by default.
-    See options to install build dependencies or to just download sources
-    without applying patches. To apply patches the ``prepare`` step has to be enabled.
+    discover:
+        how: shell
+        dist-git-source: true
+        tests:
+        - name: /upstream
+          test: cd $TMT_SOURCE_DIR/*/tests && make test
 
-    .. code-block:: yaml
-
-        discover:
-            how: shell
-            dist-git-source: true
-            tests:
-              - name: /upstream
-                test: cd $TMT_SOURCE_DIR/*/tests && make test
-
-    To clone a remote repository and use it as a source specify ``url``.
-    It accepts also ``ref`` to checkout provided reference. Dynamic
+    To clone a remote repository and use it as a source specify `url`.
+    It accepts also `ref` to checkout provided reference. Dynamic
     reference feature is supported as well.
 
-    .. code-block:: yaml
-
-        discover:
-            how: shell
-            url: https://github.com/teemtee/tmt.git
-            ref: "1.18.0"
-            tests:
-              - name: first test
-                test: ./script-from-the-repo.sh
+    discover:
+        how: shell
+        url: https://github.com/teemtee/tmt.git
+        ref: "1.18.0"
+        tests:
+        - name: first test
+          test: ./script-from-the-repo.sh
     """
 
     _data_class = DiscoverShellData
 
-    _tests: list[tmt.base.Test] = []
+    _tests: List[tmt.base.Test] = []
 
-    def show(self, keys: Optional[list[str]] = None) -> None:
+    def show(self, keys: Optional[List[str]] = None) -> None:
         """ Show config details """
         super().show([])
         # FIXME: cast() - typeless "dispatcher" method
-        tests = cast(list[TestDescription], self.get('tests'))
+        tests = cast(List[TestDescription], self.get('tests'))
         if tests:
             test_names = [test.name for test in tests]
             click.echo(tmt.utils.format('tests', test_names))
 
     def fetch_remote_repository(
-            self,
-            url: Optional[str],
-            ref: Optional[str],
-            testdir: Path,
-            keep_git_metadata: bool = False) -> None:
+            self, url: Optional[str], ref: Optional[str], testdir: Path) -> None:
         """ Fetch remote git repo from given url to testdir """
         # Nothing to do if no url provided
         if not url:
@@ -288,9 +253,9 @@ class DiscoverShell(tmt.steps.discover.DiscoverPlugin[DiscoverShellData]):
         tmt.utils.git_clone(
             url=url,
             destination=testdir,
-            shallow=ref is None,
-            env=Environment({"GIT_ASKPASS": EnvVarValue("echo")}),
-            logger=self._logger)
+            common=self,
+            env={"GIT_ASKPASS": "echo"},
+            shallow=ref is None)
 
         # Resolve possible dynamic references
         try:
@@ -306,57 +271,33 @@ class DiscoverShell(tmt.steps.discover.DiscoverPlugin[DiscoverShellData]):
         if ref:
             self.info('ref', ref, 'green')
             self.debug(f"Checkout ref '{ref}'.")
-            self.run(Command('git', 'checkout', '-f', ref), cwd=testdir)
+            self.run(Command('git', 'checkout', '-f', str(ref)), cwd=testdir)
 
         # Remove .git so that it's not copied to the SUT
         # if 'keep-git-metadata' option is not specified
-        if not keep_git_metadata:
+        if not self.get('keep_git_metadata', False):
             shutil.rmtree(testdir / '.git')
 
     def go(self) -> None:
         """ Discover available tests """
-        super().go()
-        tests = fmf.Tree({'summary': 'tests'})
+        super(DiscoverShell, self).go()
+        tests = fmf.Tree(dict(summary='tests'))
 
         assert self.workdir is not None
         testdir = self.workdir / "tests"
 
-        self.log_import_plan_details()
+        # Fetch remote repository
+        url = self.get('url', None)
+        ref = self.get('ref', None)
+        self.fetch_remote_repository(url, ref, testdir)
 
         # dist-git related
         sourcedir = self.workdir / 'source'
         dist_git_source = self.get('dist-git-source', False)
 
-        # Fetch remote repository related
-        url = self.get('url', None)
-        ref = self.get('ref', None)
-
-        # Git metadata are necessary for dist_git_source
-        keep_git_metadata = True if dist_git_source else self.get('keep_git_metadata', False)
-
-        if url:
-            self.fetch_remote_repository(url, ref, testdir, keep_git_metadata)
-        else:
-            # Symlink tests directory to the plan work tree
-            assert self.step.plan.worktree  # narrow type
-
-            relative_path = self.step.plan.worktree.relative_to(self.workdir)
-            testdir.symlink_to(relative_path)
-
-            if keep_git_metadata:
-                # Copy .git which is excluded when worktree is initialized
-                tree_root = Path(self.step.plan.node.root)
-                # If exists, git_root can be only the same or parent of fmf_root
-                git_root = tmt.utils.git_root(fmf_root=tree_root, logger=self._logger)
-                if git_root:
-                    if git_root != tree_root:
-                        raise tmt.utils.DiscoverError(
-                            "The 'keep-git-metadata' option can be "
-                            "used only when fmf root is the same as git root.")
-                    self.run(Command("rsync", "-ar", f"{git_root}/.git", testdir))
-
         # Check and process each defined shell test
-        for data in self.data.tests:
+        # FIXME: cast() - https://github.com/teemtee/tmt/issues/1540
+        for data in cast(DiscoverShellData, self.data).tests:
             # Create data copy (we want to keep original data for save()
             data = copy.deepcopy(data)
             # Extract name, make sure it is present
@@ -376,19 +317,27 @@ class DiscoverShell(tmt.steps.discover.DiscoverPlugin[DiscoverShellData]):
                 data.duration = tmt.base.DEFAULT_TEST_DURATION_L2
             # Add source dir path variable
             if dist_git_source:
-                data.environment['TMT_SOURCE_DIR'] = EnvVarValue(sourcedir)
+                data.environment['TMT_SOURCE_DIR'] = str(sourcedir)
 
             # Create a simple fmf node, with correct name. Emit only keys and values
             # that are no longer default. Do not add `name` itself into the node,
             # it's not a supported test key, and it's given to the node itself anyway.
             # Note the exception for `duration` key - it's expected in the output
             # even if it still has its default value.
-            test_fmf_keys: dict[str, Any] = {
+            test_fmf_keys: Dict[str, Any] = {
                 key: value
                 for key, value in data.to_spec().items()
                 if key != 'name' and (key == 'duration' or value != data.default(key))
                 }
             tests.child(data.name, test_fmf_keys)
+
+        # Symlink tests directory to the plan work tree
+        # (unless remote repository is provided using 'url')
+        if not url:
+            assert self.step.plan.worktree  # narrow type
+
+            relative_path = self.step.plan.worktree.relative_to(self.workdir)
+            testdir.symlink_to(relative_path)
 
         if dist_git_source:
             assert self.step.plan.my_run is not None  # narrow type
@@ -397,10 +346,10 @@ class DiscoverShell(tmt.steps.discover.DiscoverPlugin[DiscoverShellData]):
             try:
                 run_result = self.run(
                     Command("git", "rev-parse", "--show-toplevel"),
-                    cwd=testdir if url else self.step.plan.my_run.tree.root,
-                    ignore_dry=True)
-                assert run_result.stdout is not None
-                git_root = Path(run_result.stdout.strip('\n'))
+                    cwd=self.step.plan.my_run.tree.root,
+                    ignore_dry=True)[0]
+                assert run_result is not None
+                git_root = Path(run_result.strip('\n'))
             except tmt.utils.RunError:
                 assert self.step.plan.my_run is not None  # narrow type
                 assert self.step.plan.my_run.tree is not None  # narrow type
@@ -408,27 +357,8 @@ class DiscoverShell(tmt.steps.discover.DiscoverPlugin[DiscoverShellData]):
                     f"Directory '{self.step.plan.my_run.tree.root}' "
                     f"is not a git repository.")
             try:
-                download_only: bool = self.get('dist-git-download-only')
-                self.download_distgit_source(
-                    distgit_dir=git_root,
-                    target_dir=sourcedir,
-                    handler_name=self.get('dist-git-type'),
-                    )
-                # Copy rest of files so TMT_SOURCE_DIR has patches, sources and spec file
-                # FIXME 'worktree' could be used as sourcedir when 'url' is not set
-                shutil.copytree(git_root, sourcedir, symlinks=True, dirs_exist_ok=True)
-
-                if download_only:
-                    self.debug("Do not extract sources as 'download_only' is set.")
-                else:
-                    # Check if prepare is enabled, warn user if not
-                    if not self.step.plan.prepare.enabled:
-                        self.warn("Sources will not be extracted, prepare step is not enabled.")
-                    insert_to_prepare_step(
-                        discover_plugin=self,
-                        sourcedir=sourcedir,
-                        )
-
+                self.extract_distgit_source(
+                    git_root, sourcedir, self.get('dist-git-type'))
             except Exception as error:
                 raise tmt.utils.DiscoverError(
                     "Failed to process 'dist-git-source'.") from error
@@ -439,22 +369,9 @@ class DiscoverShell(tmt.steps.discover.DiscoverPlugin[DiscoverShellData]):
             tree=tests).tests(
             conditions=["manual is False"])
 
-        # Propagate `where` key and TMT_SOURCE_DIR
+        # Propagate `where` key
         for test in self._tests:
             test.where = cast(tmt.steps.discover.DiscoverStepData, self.data).where
-            if dist_git_source:
-                test.environment['TMT_SOURCE_DIR'] = EnvVarValue(sourcedir)
 
-    def tests(
-            self,
-            *,
-            phase_name: Optional[str] = None,
-            enabled: Optional[bool] = None) -> list['tmt.Test']:
-
-        if phase_name is not None and phase_name != self.name:
-            return []
-
-        if enabled is None:
-            return self._tests
-
-        return [test for test in self._tests if test.enabled is enabled]
+    def tests(self) -> List[tmt.base.Test]:
+        return self._tests

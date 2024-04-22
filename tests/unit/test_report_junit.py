@@ -1,5 +1,6 @@
 import xml.dom
 import xml.dom.minidom
+from typing import List
 from unittest.mock import MagicMock, PropertyMock
 
 import pytest
@@ -9,23 +10,29 @@ from tmt.steps.report.junit import ReportJUnit, ReportJUnitData
 from tmt.utils import Path
 
 
-@pytest.fixture()
-def report_fix(tmppath: Path, root_logger):
+@pytest.fixture
+def report_fix(tmpdir, root_logger):
     # need to provide genuine workdir paths - mock would break os.path.* calls
-    step_mock = MagicMock(workdir=tmppath)
+    step_mock = MagicMock(workdir=str(tmpdir))
     plan_mock = MagicMock()
     name_property = PropertyMock(return_value='name')
 
     type(plan_mock).name = name_property
     type(step_mock).plan = plan_mock
 
-    out_file_path = str(tmppath / "out.xml")
+    out_file_path = str(tmpdir.join("out.xml"))
+
+    def get(key, default=None):
+        if key == "file":
+            return out_file_path
+        return default
 
     report = ReportJUnit(
         logger=root_logger,
         step=step_mock,
-        data=ReportJUnitData(name='x', how='junit', file=out_file_path),
-        workdir=tmppath / 'junit')
+        data=ReportJUnitData(name='x', how='junit'),
+        workdir=Path(str(tmpdir.join('junit'))))
+    report.get = get
     report.info = MagicMock()
 
     results = []
@@ -41,7 +48,7 @@ def report_fix(tmppath: Path, root_logger):
 # .toprettyxml() methods. But that has been observed as not fully deterministic
 # with Python 3.6, changing order or attributes from time to time. Therefore
 # taking the longer, more verbose approach.
-def _compare_xml_node(tree_path: list[str], expected: xml.dom.Node, actual: xml.dom.Node) -> None:
+def _compare_xml_node(tree_path: List[str], expected: xml.dom.Node, actual: xml.dom.Node) -> None:
     """ Assert two XML nodes have the same content """
 
     # All of this would be doable in a much, much simpler, condensed manner,
@@ -71,9 +78,9 @@ def _compare_xml_node(tree_path: list[str], expected: xml.dom.Node, actual: xml.
 
     for (expected_name, expected_value), (actual_name, actual_value) in zip(
             expected_attributes, actual_attributes):
-        assert expected_name == actual_name, f"Attribute mismatch at {tree_path_joined}: " \
-            f"expected {expected_name}=\"{expected_value}\""
-        assert expected_value == actual_value, f"Attribute mismatch at {tree_path_joined}: " \
+        assert expected_name == actual_name and expected_value == actual_value, \
+            f"Attribute mismatch at {tree_path_joined}: " \
+            f"expected {expected_name}=\"{expected_value}\", " \
             f"found {actual_name}=\"{actual_value}\""
 
     # Hooray, attributes match. Dig deeper, how about children?
@@ -84,7 +91,7 @@ def _compare_xml_node(tree_path: list[str], expected: xml.dom.Node, actual: xml.
     # XML, they are not important - in this case, they are spawned by indentation of
     # elements in the expected XML string, and they do not affect the semantics of those
     # nodes.
-    def _valid_children(node: xml.dom.Node) -> list[xml.dom.Node]:
+    def _valid_children(node: xml.dom.Node) -> List[xml.dom.Node]:
         return [
             child for child in node.childNodes
             if child.nodeType != xml.dom.Node.TEXT_NODE or child.data.strip()
@@ -100,7 +107,8 @@ def _compare_xml_node(tree_path: list[str], expected: xml.dom.Node, actual: xml.
 
     return all(
         _compare_xml_node(
-            [*tree_path, expected_child.nodeName],
+            tree_path + [
+                expected_child.nodeName],
             expected_child,
             actual_child) for expected_child,
         actual_child in zip(
@@ -109,9 +117,10 @@ def _compare_xml_node(tree_path: list[str], expected: xml.dom.Node, actual: xml.
 
 
 def assert_xml(actual_filepath, expected):
-    with open(actual_filepath) as f, xml.dom.minidom.parse(f) as actual_dom, \
-            xml.dom.minidom.parseString(expected) as expected_dom:
-        assert _compare_xml_node([expected_dom.nodeName], expected_dom, actual_dom)
+    with open(actual_filepath) as f:
+        with xml.dom.minidom.parse(f) as actual_dom:
+            with xml.dom.minidom.parseString(expected) as expected_dom:
+                assert _compare_xml_node([expected_dom.nodeName], expected_dom, actual_dom)
 
 
 @pytest.mark.skipif(pytest.__version__.startswith('3'),
@@ -119,7 +128,7 @@ def assert_xml(actual_filepath, expected):
 class TestStateMapping:
     def test_pass(self, report_fix):
         report, results, out_file_path = report_fix
-        results.append(Result(result=ResultOutcome.PASS, name="/pass", serial_number=1))
+        results.append(Result(result=ResultOutcome.PASS, name="/pass", serialnumber=1))
 
         report.go()
 
@@ -133,7 +142,7 @@ class TestStateMapping:
 
     def test_info(self, report_fix):
         report, results, out_file_path = report_fix
-        results.append(Result(result=ResultOutcome.INFO, name="/info", serial_number=1))
+        results.append(Result(result=ResultOutcome.INFO, name="/info", serialnumber=1))
         report.go()
 
         assert_xml(out_file_path, """<?xml version="1.0" ?>
@@ -148,7 +157,7 @@ class TestStateMapping:
 
     def test_warn(self, report_fix):
         report, results, out_file_path = report_fix
-        results.append(Result(result=ResultOutcome.WARN, name="/warn", serial_number=1))
+        results.append(Result(result=ResultOutcome.WARN, name="/warn", serialnumber=1))
         report.go()
 
         assert_xml(out_file_path, """<?xml version="1.0" ?>
@@ -163,7 +172,7 @@ class TestStateMapping:
 
     def test_error(self, report_fix):
         report, results, out_file_path = report_fix
-        results.append(Result(result=ResultOutcome.ERROR, name="/error", serial_number=1))
+        results.append(Result(result=ResultOutcome.ERROR, name="/error", serialnumber=1))
         report.go()
 
         assert_xml(out_file_path, """<?xml version="1.0" ?>
@@ -178,7 +187,7 @@ class TestStateMapping:
 
     def test_fail(self, report_fix):
         report, results, out_file_path = report_fix
-        results.append(Result(result=ResultOutcome.FAIL, name="/fail", serial_number=1))
+        results.append(Result(result=ResultOutcome.FAIL, name="/fail", serialnumber=1))
         report.go()
 
         assert_xml(out_file_path, """<?xml version="1.0" ?>

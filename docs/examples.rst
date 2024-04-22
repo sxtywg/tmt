@@ -13,9 +13,7 @@ implementation details for debugging use the ``--debug`` option.
 See :ref:`/stories/cli/common` options for details.
 
 Simply run ``tmt`` to get started with exploring your working
-directory:
-
-.. code-block:: shell
+directory::
 
     $ tmt
     Found 2 tests: /tests/docs and /tests/ls.
@@ -29,17 +27,13 @@ directory:
 Init
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Before starting a new project initialize the metadata tree root:
-
-.. code-block:: shell
+Before starting a new project initialize the metadata tree root::
 
     $ tmt init
     Tree '/tmp/try' initialized.
     To populate it with example content, use --template with mini, base or full.
 
-You can also populate it with a minimal plan example:
-
-.. code-block:: shell
+You can also populate it with a minimal plan example::
 
     $ tmt init --template mini
     Tree '/tmp/try' initialized.
@@ -47,9 +41,7 @@ You can also populate it with a minimal plan example:
     Directory '/tmp/try/plans' created.
     Plan '/tmp/try/plans/example.fmf' created.
 
-Create a plan and a test:
-
-.. code-block:: shell
+Create a plan and a test::
 
     $ tmt init --template base
     Tree '/tmp/try' initialized.
@@ -61,9 +53,7 @@ Create a plan and a test:
     Plan '/tmp/try/plans/example.fmf' created.
 
 Initialize with a richer example that also includes the story
-(overwriting existing files):
-
-.. code-block:: shell
+(overwriting existing files)::
 
     $ tmt init --template full --force
     Tree '/tmp/try' already exists.
@@ -88,24 +78,18 @@ See the :ref:`specification` for details about the L1 Metadata.
 Explore Tests
 ------------------------------------------------------------------
 
-Use ``tmt tests`` to briefly list discovered tests:
-
-.. code-block:: shell
+Use ``tmt tests`` to briefly list discovered tests::
 
     $ tmt tests
     Found 2 tests: /tests/docs and /tests/ls.
 
-Use ``tmt tests ls`` to list available tests, one per line:
-
-.. code-block:: shell
+Use ``tmt tests ls`` to list available tests, one per line::
 
     $ tmt tests ls
     /tests/docs
     /tests/ls
 
-Use ``tmt tests show`` to see detailed test metadata:
-
-.. code-block:: shell
+Use ``tmt tests show`` to see detailed test metadata::
 
     $ tmt tests show
     /tests/docs
@@ -130,9 +114,7 @@ Use ``tmt tests show`` to see detailed test metadata:
          enabled yes
 
 Append ``--verbose`` to get additional information about test as
-the list of source files where metadata are defined and its full id:
-
-.. code-block:: shell
+the list of source files where metadata are defined and its full id::
 
     $ tmt tests show /tests/docs --verbose
     /tests/docs
@@ -155,9 +137,7 @@ Filter Tests
 
 Both ``tmt tests ls`` and ``tmt tests show`` can optionally filter
 tests with a regular expression, filter expression, a Python
-condition or link expression:
-
-.. code-block:: shell
+condition or link expression::
 
     $ tmt tests show docs
     /tests/docs
@@ -187,12 +167,76 @@ condition or link expression:
     /tests/unit
 
 In order to select tests under the current working directory use
-the single dot notation:
-
-.. code-block:: shell
+the single dot notation::
 
     $ tmt test show .
     $ tmt run test --name .
+
+
+Lint Tests
+------------------------------------------------------------------
+
+Use ``tmt tests lint`` to check defined test metadata against the
+L1 Metadata Specification::
+
+    $ tmt tests lint
+    /tests/docs
+    pass test script must be defined
+    pass directory path must be defined
+    warn summary should not exceed 50 characters
+
+    /tests/ls
+    pass test script must be defined
+    pass directory path must be defined
+
+
+Share Common Attributes
+------------------------------------------------------------------
+
+Sometimes it might be useful to reuse test code by providing
+different parameter to the same test script. In such cases
+inheritance allows to easily share the common setup::
+
+    test: ./test.sh
+    require: curl
+
+    /fast:
+        summary: Quick smoke test
+        tier: 1
+        duration: 1m
+        environment:
+            MODE: fast
+
+    /full:
+        summary: Full test set
+        tier: 2
+        duration: 10m
+        environment:
+            MODE: full
+
+In the example above, two tests are defined, both executing the
+same ``test.sh`` script but providing a different environment
+variable which instructs the test to perform a different set of
+actions.
+
+
+Create Tests
+------------------------------------------------------------------
+
+Use ``tmt test create`` to create a new test based on a template::
+
+    $ tmt test create /tests/smoke
+    Template (shell or beakerlib): shell
+    Directory '/home/psss/git/tmt/tests/smoke' created.
+    Test metadata '/home/psss/git/tmt/tests/smoke/main.fmf' created.
+    Test script '/home/psss/git/tmt/tests/smoke/test.sh' created.
+
+Specify templates non-interactively with ``-t`` or ``--template``::
+
+    $ tmt tests create --template shell /tests/smoke
+    $ tmt tests create --t beakerlib /tests/smoke
+
+Use ``-f`` or ``--force`` option to overwrite existing files.
 
 
 Import Tests
@@ -215,36 +259,13 @@ sources.
 
 To read data from Polarion you need to install and setup
 ``pylero`` library (described in `Export tests`_) and enable it
-with the ``--polarion`` flag. You can specify ``--polarion-case-id``
-instead of searching by values pulled from other sources and you can specify
-``--no-link-polarion`` to not save Polarion links. It reads
+with the ``--polarion`` flag.  If you are importing a single test
+case you can specify ``--polarion-case-id`` instead of searching
+by values pulled from other sources and you can specify
+``--no-link-polarion`` to not save Polarion links.  It reads
 summary, description, enabled status, assignee, id, component,
 tags and links. If ``id`` is not found in Polarion it's generated
 and exported.
-
-Argument ``--polarion-case-id`` can be provided multiple times to import
-multiple test cases and it supports setting of test names (seprated by ``:``),
-if test name is not provided ``Polarion WorkItem ID`` is used
-and lastly when ``--no-link-polarion`` is used ``summary`` is taken as test name.
-Examples how to use the import with multiple cases and test names:
-
-.. code-block:: shell
-
-    $ tmt test import --polarion --polarion-case-id TMT-123:smoke_test .
-    ...
-    Metadata successfully stored into '/path/to/test/smoke_test.fmf'.
-
-    $ tmt test import --polarion --polarion-case-id TMT-123:smoke_test --polarion-case-id TMT-124:base_test .
-    ...
-    Metadata successfully stored into '/path/to/test/main.fmf'.
-    Metadata successfully stored into '/path/to/test/smoke_test.fmf'.
-    Metadata successfully stored into '/path/to/test/base_test.fmf'.
-
-    $ tmt test import --polarion --polarion-case-id TMT-123 --polarion-case-id TMT-124 .
-    ...
-    Metadata successfully stored into '/path/to/test/main.fmf'.
-    Metadata successfully stored into '/path/to/test/TMT-123.fmf'.
-    Metadata successfully stored into '/path/to/test/TMT-124.fmf'.
 
 Manual test cases can be imported from Nitrate using the
 ``--manual`` option. Provide either ``--case ID`` or ``--plan ID``
@@ -253,9 +274,7 @@ case should be imported or which test plan should be checked for
 manual test cases. Directory ``Manual`` will be created in the fmf
 root directory and manual test cases will be imported there.
 
-Example output of metadata conversion:
-
-.. code-block:: shell
+Example output of metadata conversion::
 
     $ tmt test import
     Checking the '/home/psss/git/tmt/examples/convert' directory.
@@ -291,9 +310,7 @@ Example output of metadata conversion:
         continue: false
     Metadata successfully stored into '/home/psss/git/tmt/examples/convert/main.fmf'.
 
-And here's the resulting ``main.fmf`` file:
-
-.. code-block:: yaml
+And here's the resulting ``main.fmf`` file::
 
     summary: Simple smoke test
     description: |
@@ -339,9 +356,7 @@ Use ``tmt tests export`` command to export test metadata into
 different formats and tools. By default all available tests are
 exported, specify regular expression matching test name to export
 only selected tests or use ``.`` to export tests under the current
-directory:
-
-.. code-block:: shell
+directory::
 
     $ tmt tests export --how nitrate .
     Test case 'TC#0603489' found.
@@ -426,22 +441,18 @@ defined in the :ref:`/spec/tests/require` attribute and are
 fetched during the :ref:`/spec/plans/discover` step.
 
 Use the short backward-compatible syntax to fetch libraries from
-the `default repository`__:
-
-.. code-block:: yaml
+the `default repository`__::
 
     require: library(openssl/certgen)
 
 __ https://github.com/beakerlib/
 
 The full fmf identifier allows to fetch libraries from arbitrary
-location:
-
-.. code-block:: yaml
+location::
 
     require:
-      - url: https://github.com/beakerlib/openssl
-        name: /certgen
+        - url: https://github.com/beakerlib/openssl
+          name: /certgen
 
 See the :ref:`/spec/tests/require` attribute specification for
 detailed description of the syntax and available keys.
@@ -458,17 +469,13 @@ See the :ref:`specification` for details about the L2 Metadata.
 Explore Plans
 ------------------------------------------------------------------
 
-Exploring ``plans`` is similar to using ``tests``:
-
-.. code-block:: shell
+Exploring ``plans`` is similar to using ``tests``::
 
     $ tmt plans
     Found 3 plans: /plans/basic, /plans/helps and /plans/smoke.
 
 Use ``tmt plans ls`` and ``tmt plans show`` to output plan names
-and detailed plan information, respectively:
-
-.. code-block:: shell
+and detailed plan information, respectively::
 
     $ tmt plans ls
     /plans/basic
@@ -485,7 +492,7 @@ and detailed plan information, respectively:
           filter tier: 0,1
          prepare
              how ansible
-        playbook ansible/packages.yml
+        playbook plans/packages.yml
 
     /plans/helps
          summary Check help messages
@@ -502,6 +509,80 @@ Verbose output and filtering are similar as for exploring tests.
 See `Explore Tests`_ and `Filter Tests`_ for more examples.
 
 
+Create Plans
+------------------------------------------------------------------
+
+Use ``tmt plan create`` to create a new plan with templates::
+
+    tmt plans create --template mini /plans/smoke
+    tmt plans create --t full /plans/features
+
+In order to override default template content directly from the
+command line use individual step options and provide desired data
+in the ``yaml`` format::
+
+    tmt plan create /plans/custom --template mini \
+        --discover '{how: "fmf", name: "internal", url: "https://internal/repo"}' \
+        --discover '{how: "fmf", name: "external", url: "https://external/repo"}'
+
+Options ``-f`` or ``--force`` can be used to overwrite existing
+files.
+
+
+Lint Plans
+------------------------------------------------------------------
+
+Use ``tmt plan lint`` to check defined plan metadata against the L2
+Metadata Specification::
+
+    $ tmt plan lint
+    /plans/smoke
+    pass correct attributes are used
+
+    /plans/features/advanced
+    pass correct attributes are used
+    pass fmf remote id in 'default' is valid
+
+    /plans/features/basic
+    pass correct attributes are used
+    pass fmf remote id in 'default' is valid
+
+
+.. _inherit-plans:
+
+Inherit Plans
+------------------------------------------------------------------
+
+If several plans share similar content it is possible to use
+inheritance to prevent unnecessary duplication of the data::
+
+    discover:
+        how: fmf
+        url: https://github.com/teemtee/tmt
+    prepare:
+        how: ansible
+        playbook: ansible/packages.yml
+    execute:
+        how: tmt
+
+    /basic:
+        summary: Quick set of basic functionality tests
+        discover+:
+            filter: tier:1
+
+    /features:
+        summary: Detailed tests for individual features
+        discover+:
+            filter: tier:2
+
+Note that a ``+`` sign should be used if you want to extend the
+parent data instead of replacing them. See the `fmf features`_
+documentation for a detailed description of the hierarchy,
+inheritance and merging attributes.
+
+.. _fmf features: https://fmf.readthedocs.io/en/latest/features.html
+
+
 .. _multiple-configs:
 
 Multiple Configs
@@ -510,23 +591,19 @@ Multiple Configs
 Step can contain multiple configurations. In this case provide
 each config with a unique name. Applying ansible playbook and
 executing custom script in a single :ref:`/spec/plans/prepare`
-step could look like this:
-
-.. code-block:: yaml
+step could look like this::
 
     prepare:
       - name: packages
         how: ansible
-        playbook: ansible/packages.yml
+        playbook: plans/packages.yml
       - name: services
         how: shell
         script: systemctl start service
 
 Another common use case which can be easily covered by multiple
 configs can be fetching tests from multiple repositories during
-the :ref:`/spec/plans/discover` step:
-
-.. code-block:: yaml
+the :ref:`/spec/plans/discover` step::
 
     discover:
       - name: upstream
@@ -542,9 +619,7 @@ Extend Steps
 
 When defining multiple configurations for a step it is also
 possible to make use of fmf inheritance. For example the common
-preparation config can be defined up in the hierarchy:
-
-.. code-block:: yaml
+preparation config can be defined up in the hierarchy::
 
     prepare:
       - name: tmt
@@ -552,9 +627,7 @@ preparation config can be defined up in the hierarchy:
         package: tmt
 
 Extending the prepare config in a child plan to install additional
-package then could be done in the following way:
-
-.. code-block:: yaml
+package then could be done in the following way::
 
     prepare+:
       - name: pytest
@@ -562,9 +635,7 @@ package then could be done in the following way:
         package: python3-pytest
 
 Eventually, use :ref:`/spec/core/adjust` to extend the step
-conditionally:
-
-.. code-block:: yaml
+conditionally::
 
     adjust:
       - when: distro == fedora
@@ -586,9 +657,7 @@ standard, both ``$var`` and ``${var}`` may be used. The values of
 variables are taken from the ``--environment`` command line option
 and the ``environment`` plan attribute. If a variable is defined
 using both the attribute and the option, the value from the
-``--environment`` option has a priority:
-
-.. code-block:: yaml
+``--environment`` option has a priority::
 
     discover:
         how: fmf
@@ -596,28 +665,10 @@ using both the attribute and the option, the value from the
 
     $ tmt run -e REPO=tmt
 
-Variables can be also utilized to pick tests from specific discovery phase.
-The command line (``tmt run tests --name ...``) applies for the whole discovery
-step and would select more tests than required in the case the test names are not unique:
-
-.. code-block:: yaml
-
-    discover:
-      - how: fmf
-        url: https://github.com/teemtee/tmt.git
-        test: ${PICK_TMT}
-      - how: fmf
-        url: https://github.com/teemtee/fmf.git
-        test: ${PICK_FMF}
-
-    $ tmt run -e PICK_TMT='^/tests/core/ls$' -e PICK_FMF='^/tests/(unit|basic/ls)$'
-
 For :ref:`context</spec/context>` parametrization the syntax is
 ``$@dimension`` or ``$@{dimension}``. The values are set according
 to the defined context specified using ``--context`` command line
-option and the ``context`` plan attribute:
-
-.. code-block:: yaml
+option and the ``context`` plan attribute::
 
     context:
         branch: main
@@ -628,34 +679,27 @@ option and the ``context`` plan attribute:
 
     $ tmt -c branch=tmt run
 
-
-.. _dynamic-ref:
-
 Dynamic ``ref`` Evaluation
 ------------------------------------------------------------------
 
 When using test branching for test maintenance it becomes handy to
-be able to set :ref:`ref</spec/plans/discover/fmf>` dynamically
-depending on the provided :ref:`/spec/context`. This is possible
-using a special file in tmt format stored in a default branch of a
-tests repository. That special file should contain rules assigning
-attribute ``ref`` in an ``adjust`` block depending on the context.
+be able to set ``ref`` dynamically depending on the provided
+:ref:`/spec/context`. This is possible using a special file in tmt format
+stored in a default branch of a tests repository. That special file
+should contain rules assigning attribute ``ref`` in an ``adjust``
+block depending on the context.
 
 Dynamic ``ref`` assignment is enabled whenever a test plan reference
 has the format ``ref: @FILEPATH``.
 
-Example of a test plan:
-
-.. code-block:: yaml
+Example of a test plan::
 
     discover:
         how: fmf
         url: https://github.com/teemtee/repo
         ref: "@.tmtref"
 
-Example of a dynamic ``ref`` definition file in ``repo/.tmtref``:
-
-.. code-block:: yaml
+Example of a dynamic ``ref`` definition file in ``repo/.tmtref``::
 
     ref: main
     adjust:
@@ -667,9 +711,7 @@ Example of a dynamic ``ref`` definition file in ``repo/.tmtref``:
         ref: rhel-9
 
 The definition file can also be parametrized using environment
-variables or context dimensions:
-
-.. code-block:: yaml
+variables or context dimensions::
 
     ref: main
     adjust:
@@ -688,9 +730,7 @@ Explore Stories
 ------------------------------------------------------------------
 
 Exploring ``stories`` is quite similar to using ``tests`` or
-``plans``:
-
-.. code-block:: shell
+``plans``::
 
     $ tmt stories
     Found 109 stories: /spec/core/description, /spec/core/order,
@@ -698,9 +738,7 @@ Exploring ``stories`` is quite similar to using ``tests`` or
     /spec/plans/summary, /spec/plans/discover and 102 more.
 
 The ``tmt stories ls`` and ``tmt stories show`` commands output
-the names and the detailed information, respectively:
-
-.. code-block:: shell
+the names and the detailed information, respectively::
 
     $ tmt stories ls
     /spec/core/description
@@ -727,9 +765,7 @@ Filter Stories
 ------------------------------------------------------------------
 
 Additionally, and specifically to stories, special flags are
-available for binary status filtering:
-
-.. code-block:: shell
+available for binary status filtering::
 
     $ tmt stories show --help | grep only
       -i, --implemented    Implemented stories only.
@@ -759,9 +795,7 @@ available for binary status filtering:
     ...
 
 In order to select stories under the current working directory use
-the single dot notation:
-
-.. code-block:: shell
+the single dot notation::
 
     $ tmt story show .
 
@@ -770,9 +804,7 @@ Story Coverage
 ------------------------------------------------------------------
 
 Current status of the code, test and documentation coverage can be
-checked using the ``tmt story coverage`` command:
-
-.. code-block:: shell
+checked using the ``tmt story coverage`` command::
 
     $ tmt story coverage
     code test docs story
@@ -784,13 +816,64 @@ checked using the ``tmt story coverage`` command:
      39%   9%   9% from 109 stories
 
 
+Create Stories
+------------------------------------------------------------------
+
+The ``tmt story create`` command can be used to create a new story
+based on given template::
+
+    tmt story create --template full /stories/usability
+
+Use ``-f`` or ``--force`` to overwrite existing files.
+
+Lint Stories
+-------------------------------------------------------------------
+
+The ``tmt story lint`` checks defined story metadata against the L3
+Metadata Specification::
+
+    $ tmt story lint
+
+    /spec/tests/recommend
+    pass correct attributes are used
+    warn summary should not exceed 50 characters
+
+    /spec/tests/result
+    pass correct attributes are used
+
+    /spec/tests/summary
+    fail unknown attribute 'links' is used
+
+
+Lint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``tmt lint`` command checks all the present metadata against
+the L1, L2 and L3 Metadata Specification. It combines all the
+partial lint commands (test, plan and story) into one::
+
+    $ tmt lint
+    /tests/plan/create
+    pass test script must be defined
+    pass directory path must be absolute
+    pass directory path must exist
+    warn summary should not exceed 50 characters
+    pass correct attributes are used
+
+    /spec/plans/prepare/ansible
+    pass correct attributes are used
+    warn summary should not exceed 50 characters
+
+    /stories/cli/story/create
+    pass correct attributes are used
+    warn summary is very useful for quick inspection
+
+
 Run
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``tmt run`` command is used to execute tests. By default all
-steps for all discovered test plans are executed:
-
-.. code-block:: shell
+steps for all discovered test plans are executed::
 
     $ tmt run
     /var/tmp/tmt/run-581
@@ -825,9 +908,7 @@ Even if there are no :ref:`/spec/plans` defined it is still
 possible to execute tests and custom scripts. See the default
 :ref:`/stories/cli/run/default/plan` story for details.
 
-Dry run mode is enabled with the ``--dry`` option:
-
-.. code-block:: shell
+Dry run mode is enabled with the ``--dry`` option::
 
     tmt run --dry
 
@@ -835,9 +916,7 @@ Each test run creates a workdir where relevant data such as tests
 code from the discover step or test results from the execute step
 are stored. If you don't need to investigate test logs and other
 artifacts generated by the run you can remove the workdir after
-the execution is finished:
-
-.. code-block:: shell
+the execution is finished::
 
     tmt run --remove
     tmt run --rm
@@ -847,9 +926,7 @@ the execution is finished:
 Select Plans
 ------------------------------------------------------------------
 
-Choose which plans should be executed:
-
-.. code-block:: shell
+Choose which plans should be executed::
 
     $ tmt run plan --name basic
     /var/tmp/tmt/run-083
@@ -873,9 +950,7 @@ Choose which plans should be executed:
 Select Tests
 ------------------------------------------------------------------
 
-Run only a subset of available tests across all plans:
-
-.. code-block:: shell
+Run only a subset of available tests across all plans::
 
     $ tmt run test --filter tier:1
     /plans/basic
@@ -900,9 +975,7 @@ Run only a subset of available tests across all plans:
             tests: 0 tests selected
         ...
 
-To run only tests defined in the current working directory:
-
-.. code-block:: shell
+To run only tests defined in the current working directory::
 
     $ tmt run test --name .
 
@@ -916,9 +989,7 @@ about individual steps.
 
 It is possible to execute only selected steps. For example in
 order to see which tests would be executed without actually
-running them choose the ``discover`` step:
-
-.. code-block:: shell
+running them choose the ``discover`` step::
 
     $ tmt run discover
     /var/tmp/tmt/run-085
@@ -939,9 +1010,7 @@ running them choose the ``discover`` step:
 
 Use ``--verbose`` and ``--debug`` to enable more detailed output
 such as list of individual tests or showing the progress of the
-test environment provisioning:
-
-.. code-block:: shell
+test environment provisioning::
 
     $ tmt run discover --verbose
     /var/tmp/tmt/run-767
@@ -966,27 +1035,18 @@ test environment provisioning:
                 /help/plan
                 /help/smoke
 
-You can also choose multiple steps to be executed:
-
-.. code-block:: shell
+You can also choose multiple steps to be executed::
 
     tmt run discover provision prepare
 
 Arguments for particular step can be specified after the step
-name, options for all steps should go to the ``run`` command:
+name, options for all steps should go to the ``run`` command::
 
-.. code-block:: shell
-
-    # debug output for provision only
-    tmt run discover provision --debug
-
-    # debug output for all steps
-    tmt run --debug discover provision
+    tmt run discover provision --debug  # debug output for provision only
+    tmt run --debug discover provision  # debug output for all steps
 
 In order to execute all test steps while providing arguments to
-some of them it is possible to use the ``--all`` option:
-
-.. code-block:: shell
+some of them it is possible to use the ``--all`` option::
 
     tmt run --all provision --how=local
 
@@ -995,9 +1055,7 @@ Execute Progress
 ------------------------------------------------------------------
 
 When run in terminal ``execute`` step prints name of the executed test
-unless ``--debug`` or ``--verbose`` options are used:
-
-.. code-block:: shell
+unless ``--debug`` or ``--verbose`` options are used::
 
     $ tmt run
 
@@ -1007,9 +1065,7 @@ unless ``--debug`` or ``--verbose`` options are used:
 
 
 In the verbose mode the duration and result after the test is executed
-are printed:
-
-.. code-block:: shell
+are printed::
 
     $ tmt run --all execute -v
 
@@ -1017,9 +1073,7 @@ are printed:
             how: tmt
                 00:00:03 pass /tests/core/adjust [1/16]
 
-More verbose mode prints summary of the test being executed first:
-
-.. code-block:: shell
+More verbose mode prints summary of the test being executed first::
 
     $ tmt run --all execute -vv
 
@@ -1029,9 +1083,7 @@ More verbose mode prints summary of the test being executed first:
                 test: Verify test/plan adjustments based on context
                     00:00:04 pass /tests/core/adjust [1/16]
 
-The most verbose mode prints also the test output:
-
-.. code-block:: shell
+The most verbose mode prints also the test output::
 
     $ tmt run --all execute -vvv
 
@@ -1054,9 +1106,7 @@ Check Report
 ------------------------------------------------------------------
 
 When a particular step is ``done``, it won't be executed
-repeatedly unless ``--force`` is used:
-
-.. code-block:: shell
+repeatedly unless ``--force`` is used::
 
     $ tmt run -l report --verbose
     /plans/features/core
@@ -1065,9 +1115,7 @@ repeatedly unless ``--force`` is used:
             summary: 10 tests passed
 
 If you need additional information about your already ``done``
-run use ``--force`` together with the ``--verbose`` option:
-
-.. code-block:: shell
+run use ``--force`` together with the ``--verbose`` option::
 
     $ tmt run -l report -v --force
     /plans/features/core
@@ -1085,9 +1133,7 @@ run use ``--force`` together with the ``--verbose`` option:
                 pass /tests/unit
             summary: 10 tests passed
 
-In order to investigate test logs raise verbosity even more:
-
-.. code-block:: shell
+In order to investigate test logs raise verbosity even more::
 
     $ tmt run -l report -vv --force
     /plans/features/core
@@ -1107,9 +1153,7 @@ In order to investigate test logs raise verbosity even more:
 
 Use level 3 verbosity ``-vvv`` to show the complete test output.
 For more comfortable review, generate an ``html`` report and open
-it in your favorite web browser:
-
-.. code-block:: shell
+it in your favorite web browser::
 
     $ tmt run --last report --how html --open --force
     $ tmt run -l report -h html -of
@@ -1120,48 +1164,36 @@ Provision Options
 
 By default, tests are executed under a virtual machine so that
 your laptop is not affected by unexpected changes. The following
-commands are equivalent:
-
-.. code-block:: shell
+commands are equivalent::
 
     tmt run
     tmt run -a provision -h virtual
     tmt run --all provision --how=virtual
 
 You can also use an alternative virtual machine implementation
-using the ``testcloud`` provisioner:
-
-.. code-block:: shell
+using the ``testcloud`` provisioner::
 
     tmt run --all provision --how=virtual.testcloud
 
 If you already have a box ready for testing with ``ssh`` enabled,
-use the ``connect`` method:
+use the ``connect`` method::
 
-.. code-block:: shell
-
-    tmt run --all provision --how=connect --guest=name-or-ip --user=login --password=secret --become
+    tmt run --all provision --how=connect --guest=name-or-ip --user=login --password=secret
     tmt run --all provision --how=connect --guest=name-or-ip --key=private-key-path
 
 The ``container`` method allows to execute tests in a container
-using ``podman``:
-
-.. code-block:: shell
+using ``podman``::
 
     tmt run --all provision --how=container --image=fedora:latest
 
 If you are confident that tests are safe you can execute them
-directly on your ``local`` host:
-
-.. code-block:: shell
+directly on your ``local`` host::
 
     tmt run --all provision --how=local
 
 In order to reboot a provisioned guest use the ``reboot`` command.
 By default a soft reboot is performed which should prevent data
-loss, use ``--hard`` to force a hard reboot:
-
-.. code-block:: shell
+loss, use ``--hard`` to force a hard reboot::
 
     tmt run --last reboot
     tmt run --last reboot --hard
@@ -1174,9 +1206,7 @@ Sometimes the environment preparation can take a long time. Thus,
 especially for debugging tests, it usually makes sense to run the
 ``provision`` and ``prepare`` step only once, then ``execute``
 tests as many times as necessary to debug the test code and
-finally clean up when debugging is done:
-
-.. code-block:: shell
+finally clean up when debugging is done::
 
     tmt run --id <ID> --until execute    # prepare, run test once
 
@@ -1187,18 +1217,14 @@ finally clean up when debugging is done:
     tmt run -i <ID> report finish
 
 Instead of always specifying the whole run id you can also use
-``--last`` or ``-l`` as an abbreviation for the last run id:
-
-.. code-block:: shell
+``--last`` or ``-l`` as an abbreviation for the last run id::
 
     tmt run --last execute --force
     tmt run -l execute -f
 
 The ``--force`` option instructs ``tmt`` to run given step even if
 it has been already completed before. Use ``discover --force`` to
-synchronize test code changes to the run workdir:
-
-.. code-block:: shell
+synchronize test code changes to the run workdir::
 
     tmt run -l discover -f execute -f
 
@@ -1206,9 +1232,7 @@ In order to interactively debug tests use the ``--interactive``
 option which disables output capturing so that you can see what
 exactly is happening during test execution. This also allows to
 inspect particular place of the code by inserting a ``bash`` in
-the shell code or ``import pdb; pdb.set_trace()`` for python:
-
-.. code-block:: shell
+the shell code or ``import pdb; pdb.set_trace()`` for python::
 
     tmt run --all execute --how tmt --interactive
 
@@ -1218,15 +1242,11 @@ Aliases
 
 It might be useful to set up a set of shell aliases for the tmt
 command lines which you often use. For a quick reservation of
-a machine or a container for quick experimenting:
-
-.. code-block:: shell
+a machine or a container for quick experimenting::
 
     alias reserve='tmt run login --step execute execute finish provision --how container --image fedora'
 
-Reserving a testing box then can be as short as this:
-
-.. code-block:: shell
+Reserving a testing box then can be as short as this::
 
     reserve
     reserve -h virtual
@@ -1235,17 +1255,13 @@ Reserving a testing box then can be as short as this:
     reserve --image fedora:32
 
 For interactive debugging of tests the following three aliases can
-come in handy:
-
-.. code-block:: shell
+come in handy::
 
     alias start='tmt run --verbose --until report execute --how tmt --interactive test --name . provision --how virtual --image fedora'
     alias retest='tmt run --last test --name . discover -f execute -f --how tmt --interactive'
     alias stop='tmt run --last report --verbose finish'
 
-The test debugging session then can look like this:
-
-.. code-block:: shell
+The test debugging session then can look like this::
 
     start
     retest
@@ -1266,61 +1282,47 @@ Guest Login
 Use the ``login`` command to get an interactive shell on the
 provisined guest. This can be useful for example for additional
 manual preparation of the guest before testing or checking test
-logs to investigate a test failure:
-
-.. code-block:: shell
+logs to investigate a test failure::
 
     tmt run login --step prepare
     tmt run login --step execute
 
 It's possible to log in at the start or end of a step or select
-the desired step phase using order:
-
-.. code-block:: shell
+the desired step phase using order::
 
     tmt run login --step prepare:start
     tmt run login --step prepare:50
     tmt run login --step prepare:end
 
 Interactive shell session can be also enabled conditionally when
-specific test result occurs:
-
-.. code-block:: shell
+specific test result occurs::
 
     tmt run login --when fail
     tmt run login --when fail --when error
 
 You can also enable only the ``provision`` step to easily get a
 clean and safe environment for experimenting. Use the ``finish``
-step to remove provisioned guest:
-
-.. code-block:: shell
+step to remove provisioned guest::
 
     tmt run provision login
     tmt run --last finish
 
 Clean up the box right after your are done with experimenting by
-combining the above-mentioned commands on a single line:
-
-.. code-block:: shell
+combining the above-mentioned commands on a single line::
 
     tmt run provision login finish
 
 Login can be used to run an arbitrary script on a provisioned
 guest. This can be handy if you want to run arbitrary scripts between
 steps for example. This is currently used in the Testing Farm's
-`tmt reproducer`__:
-
-.. code-block:: shell
+`tmt reproducer`__::
 
     tmt run --last login < script.sh
 
 __ https://docs.testing-farm.io/general/0.1/test-results.html#_tmt_reproducer
 
 Have you heard already that using command abbreviation is possible
-as well? It might save you some typing:
-
-.. code-block:: shell
+as well? It might save you some typing::
 
     tmt run pro log fin
 
@@ -1333,9 +1335,7 @@ Status
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``status`` command is used to inspect the progress of runs,
-plans and steps that have previously been started:
-
-.. code-block:: shell
+plans and steps that have previously been started::
 
     $ tmt status
     status     id
@@ -1349,9 +1349,7 @@ Verbosity Levels
 With no verbosity (the default), the status of whole runs is
 displayed as shown above. The last done step is shown as the run
 status (or 'done' if all enabled steps are completed). With more
-verbosity (-v), the status of plans in runs is shown:
-
-.. code-block:: shell
+verbosity (-v), the status of plans in runs is shown::
 
     $ tmt status -v
     status     id
@@ -1360,9 +1358,7 @@ verbosity (-v), the status of plans in runs is shown:
     done       /var/tmp/tmt/run-001  /base
 
 With the highest verbosity (-vv), the status of individual steps
-for each plan is displayed:
-
-.. code-block:: shell
+for each plan is displayed::
 
     $ tmt status -vv
     disc prov prep exec repo fini  id
@@ -1376,18 +1372,14 @@ Status Filtering
 
 The runs shown in the status are by default taken from
 ``/var/tmp/tmt``. The directory containing runs can be specified
-using an argument to ``tmt status``:
-
-.. code-block:: shell
+using an argument to ``tmt status``::
 
     $ tmt status /tmp/run
     status     id
     done       /tmp/run/001
 
 Status of one specific run can also be shown using the ``--id``
-option:
-
-.. code-block:: shell
+option::
 
     $ tmt status -vv --id run-002
     disc prov prep exec repo fini  id
@@ -1396,26 +1388,20 @@ option:
 Runs and plans can also be filtered based on their status. Option
 ``--abandoned`` can be used to list runs/plans which have
 provision step completed but finish step not yet done. This is
-useful for finding active containers or virtual machines:
-
-.. code-block:: shell
+useful for finding active containers or virtual machines::
 
     $ tmt status --abandoned
     status     id
     prepare    /var/tmp/tmt/run-002
 
-To show only completed runs/plans, ``--finished`` can be used:
-
-.. code-block:: shell
+To show only completed runs/plans, ``--finished`` can be used::
 
     $ tmt status --finished
     status     id
     done       /var/tmp/tmt/run-001
 
 Finally, ``--active`` displays runs/plans in progress (at least
-one enabled step has not been finished):
-
-.. code-block:: shell
+one enabled step has not been finished)::
 
     $ tmt status --active
     status     id
@@ -1430,9 +1416,7 @@ When running tests, a lot of metadata can gather over time taking
 a lot of space. It may be useful to clean it every now and then
 using the ``clean`` command. Its goal is to stop the running
 guests, remove working directories or remove images. Without any
-subcommand, all of these actions are done:
-
-.. code-block:: shell
+subcommand, all of these actions are done::
 
     $ tmt clean
     clean
@@ -1442,9 +1426,7 @@ subcommand, all of these actions are done:
             testcloud
 
 It may be useful to see exactly which runs are affected using
-the ``--verbose`` option:
-
-.. code-block:: shell
+the ``--verbose`` option::
 
     $ tmt clean -v
     clean
@@ -1459,9 +1441,7 @@ the ``--verbose`` option:
                 warn: Directory '/var/tmp/tmt/testcloud/images' does not exist.
 
 However, before cleaning up all available metadata, you may want
-to see what would actually happen using ``--dry`` mode:
-
-.. code-block:: shell
+to see what would actually happen using ``--dry`` mode::
 
     $ tmt clean -v --dry
     clean
@@ -1486,9 +1466,7 @@ Clean guests
 
 The subcommand ``clean guests`` aims to stop all running guests.
 By default, runs are taken from ``/var/tmp/tmt``, this can be
-changed using an argument to the subcommand:
-
-.. code-block:: shell
+changed using an argument to the subcommand::
 
     $ tmt clean guests -v /tmp/run
     clean
@@ -1498,9 +1476,7 @@ changed using an argument to the subcommand:
 
 You may also want to clean the guests in only one run using
 ``--id`` or ``--last`` options. This serves as an alternative
-to ``tmt run --last finish``:
-
-.. code-block:: shell
+to ``tmt run --last finish``::
 
     $ tmt clean guests -v --last
     clean
@@ -1509,9 +1485,7 @@ to ``tmt run --last finish``:
             Stopping guests in run '/var/tmp/tmt/run-003' plan '/base'.
 
 The type of provision to be cleaned can be changed using
-``--how`` option:
-
-.. code-block:: shell
+``--how`` option::
 
     $ tmt run provision -h container
     /var/tmp/tmt/run-001
@@ -1539,9 +1513,7 @@ Clean workdirs
 
 The goal of ``clean runs`` is to remove workdirs of past runs.
 Similarly to above, ``/var/tmp/tmt`` is used by default as run
-location and this can be changed using an argument:
-
-.. code-block:: shell
+location and this can be changed using an argument::
 
     $ tmt clean runs /tmp/run
     clean
@@ -1549,9 +1521,7 @@ location and this can be changed using an argument:
             Removing workdir '/tmp/run/001'.
 
 Only one specific run can also be removed using ``--id`` or
-``--last`` options, similarly to ``clean guests``:
-
-.. code-block:: shell
+``--last`` options, similarly to ``clean guests``::
 
     $ tmt clean runs -v -i /var/tmp/tmt/run-001
     clean
@@ -1560,9 +1530,7 @@ Only one specific run can also be removed using ``--id`` or
 
 You may also want to remove only old runs. This can be achieved
 using ``--keep`` option which allows you to specify the number
-of latest runs to keep:
-
-.. code-block:: shell
+of latest runs to keep::
 
     $ for i in $(seq 1 10); do tmt run; done
     ...
@@ -1583,9 +1551,7 @@ Clean images
 The subcommand ``clean images`` removes images of all provision
 methods that support it. Currently, only testcloud provision
 supports this option, the images are removed from
-``/var/tmp/tmt/testcloud/images``:
-
-.. code-block:: shell
+``/var/tmp/tmt/testcloud/images``::
 
     $ tmt clean images
     clean
@@ -1598,42 +1564,20 @@ Coding
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you want to perform more advanced processing of the metadata
-which is not supported by the command line use Python. To get
-quickly started just import the ``tmt`` module and grow a new
-``tmt.Tree`` object:
-
-.. code-block:: python
+which is not supported by the command line use Python.  Just
+import the ``tmt`` module and create a logger for debugging::
 
     import tmt
-
-    tree = tmt.Tree.grow()
-
-    for test in tree.tests():
-        print(test.name)
-
-Use the ``tmt.utils.Path`` class when specifying paths:
-
-.. code-block:: python
-
     from tmt.utils import Path
 
     tree = tmt.Tree.grow(path=Path("/path/to/the/tree"))
 
-Some functions and methods require a ``logger`` instance. Creating
-it and enabling more detailed logging to console is simple:
+    for test in tree.tests():
+        print(test.name)
 
-.. code-block:: python
+You might also want to explore all available plugins if you need
+to work with metadata export::
 
-    import tmt.log
-    import tmt.utils
-
-    # Create a new logger with the desired debug/verbosity level
-    logger = tmt.log.Logger.create(debug=3, verbose=3)
-
-    # Add a console handler to show debugging output on the terminal
-    logger.add_console_handler()
-
-    tmt.utils.git_clone(
-        url="https://github.com/teemtee/tmt/",
-        destination="/tmp/something",
-        logger=logger)
+    tmt.plugins.explore()
+    for plan in tree.plans():
+        print(plan.export(format="yaml"))

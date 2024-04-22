@@ -1,6 +1,3 @@
-/:
-    inherit: false
-
 discover:
     how: fmf
 provision:
@@ -12,6 +9,13 @@ execute:
     summary: "Simple test for the file command"
     discover+:
         test: file
+
+/apache:
+    summary: "Apache test (library requires another library)"
+    discover+:
+        test: apache
+    provision:
+        how: virtual
 
 /strip_git_suffix:
     summary: "Check libraries can end in '.git' suffix"
@@ -64,8 +68,3 @@ execute:
             summary: "Missing reference"
             discover+:
                 test: missing/reference
-
-/querying:
-    summary: "Many tests requiring same rpm-only library"
-    discover+:
-        test: querying

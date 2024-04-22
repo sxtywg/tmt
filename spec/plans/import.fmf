@@ -22,23 +22,10 @@ description: |
     plan can be referenced and a full plan ``name`` must be used
     (no string matching is applied).
 
-    Additionally, one can utilize dynamic ``ref`` assignment when
-    importing a plan in order to avoid hardcoding ``ref`` value in
-    the importing plan. See the :ref:`dynamic-ref` section for
-    usage details and examples.
-
     Plan steps must not be defined in the remote plan reference.
     Inheriting or overriding remote plan config with local plan
     steps might be possible in the future but currently is not
-    supported. The imported plan can be modified in only two ways.
-    First way is via environment variables. Variables defined
-    in the plan override any variables defined in the remote plan.
-
-    The imported plan can also be altered using the ``enabled`` key.
-    If the local plan is enabled, it will follow the status of the
-    remote plan – whether it's enabled or disabled. If the local
-    plan is disabled, the remote plan will also be disabled.
-    Adjust rules are respected during this process.
+    supported in any way.
 
     .. versionadded:: 1.19
 
@@ -69,4 +56,4 @@ example:
 link:
   - relates: https://github.com/teemtee/tmt/issues/975
   - verified-by: /tests/plan/import
-  - implemented-by: /tmt/base.py
+  - implemented-by: /tmp/base.py

@@ -22,9 +22,9 @@ rlJournalStart
     rlPhaseStartTest "Existing directory and files"
         rlRun -s "tmt test create test_shell --template shell" \
             2 "test already exists"
-        rlAssertGrep "Test metadata '$tmp/test_shell/main.fmf' already exists." \
+        rlAssertGrep "File '$tmp/test_shell/main.fmf' already exists." \
             "${rlRun_LOG}"
-        rlAssertGrep "Test directory '$tmp/test_shell' already exists." \
+        rlAssertGrep "Directory '$tmp/test_shell' already exists." \
             "${rlRun_LOG}"
         rlAssertExists "$tmp/test_shell/main.fmf"
         rlAssertExists "$tmp/test_shell/test.sh"
@@ -51,7 +51,7 @@ rlJournalStart
 
     rlPhaseStartTest "Using the --dry option"
         rlRun -s "tmt test create -n -t beakerlib example-test"
-        rlAssertGrep "Test directory .* would be created." "${rlRun_LOG}"
+        rlAssertGrep "Directory .* would be created." "${rlRun_LOG}"
         rlAssertGrep "Test metadata .* would be created." "${rlRun_LOG}"
         rlAssertGrep "Test script .* would be created." "${rlRun_LOG}"
         rlAssertNotExists "$tmp/example-test"
@@ -67,49 +67,11 @@ rlJournalStart
             0 "Check testing comment was not overwritten"
 
         rlRun -s "tmt test create -nf -t beakerlib example-test"
-        rlAssertGrep "Test directory .* already exists." "${rlRun_LOG}"
+        rlAssertGrep "Directory .* already exists." "${rlRun_LOG}"
         rlAssertGrep "Test metadata .* would be overwritten." "${rlRun_LOG}"
         rlAssertGrep "Test script .* would be overwritten." "${rlRun_LOG}"
         rlRun "grep '$TEST_STRING' $tmp/example-test/test.sh" \
             0 "Check testing comment was not overwritten"
-    rlPhaseEnd
-
-    rlPhaseStartTest "Using the --link option"
-        default_relation="relates"
-        relation_taget_01="RT01"
-        relation_taget_02="https://foo.redhat.com/RT02"
-        relation_taget_03="verifies:https://foo.redhat.com/RT03"
-
-        rlRun "rm -rf $tmp/test_link" "0-255"
-        rlRun "tmt test create test_link --template shell"
-        rlAssertExists "$tmp/test_link/main.fmf"
-        rlAssertNotGrep "^link:" "$tmp/test_link/main.fmf"
-
-        rlRun "rm -rf $tmp/test_link" "0-255"
-        rlRun -s "tmt test create test_link --template shell --link ''" "1-255"
-        rlAssertNotExists "$tmp/test_link/main.fmf"
-        rlAssertGrep "Invalid spec" "${rlRun_LOG}"
-
-        rlRun "rm -rf $tmp/test_link" "0-255"
-        rlRun "tmt test create test_link --template shell --link $relation_taget_01"
-        rlAssertExists "$tmp/test_link/main.fmf"
-        rlRun -s "yq -ry .link[0] $tmp/test_link/main.fmf"
-        rlAssertGrep "$default_relation: $relation_taget_01" "${rlRun_LOG}"
-
-        rlRun "rm -rf $tmp/test_link" "0-255"
-        rlRun "tmt test create test_link --template shell --link $relation_taget_02"
-        rlAssertExists "$tmp/test_link/main.fmf"
-        rlRun -s "yq -ry .link[0] $tmp/test_link/main.fmf"
-        rlAssertGrep "$default_relation: $relation_taget_02" "${rlRun_LOG}"
-
-        rlRun "rm -rf $tmp/test_link" "0-255"
-        rlRun "tmt test create test_link --template shell \
-              --link $relation_taget_02 --link $relation_taget_03"
-        rlAssertExists "$tmp/test_link/main.fmf"
-        rlRun -s "yq -ry .link[0] $tmp/test_link/main.fmf"
-        rlAssertGrep "$default_relation: $relation_taget_02" "${rlRun_LOG}"
-        rlRun -s "yq -ry .link[1] $tmp/test_link/main.fmf"
-        rlAssertGrep "verifies: ${relation_taget_03#verifies:}" "${rlRun_LOG}"
     rlPhaseEnd
 
     rlPhaseStartCleanup

@@ -5,4 +5,13 @@ description:
     installation works as expected. These can take some time.
 discover:
     how: fmf
-    filter: 'tier: 4 & tag:-provision-only'
+    filter: 'tier: 3'
+adjust+:
+-   when: distro == centos-stream, rhel
+    because: pre-commit is not available from epel, use pip instead
+    prepare+:
+        -   how: install
+            package: python3-pip
+        -   how: shell
+            script:
+            -   pip3 install --user pre-commit

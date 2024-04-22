@@ -1,11 +1,8 @@
 import re
 
 import tmt
-import tmt.utils
 
-logger = tmt.Logger.create()
-tree = tmt.Tree(path='data', logger=logger)
-
+tree = tmt.Tree(logger=tmt.Logger.create(), path='data')
 prefix = r'https://github.com/.*/tmt/tree/.*/tests/core/web-link/data/'
 
 

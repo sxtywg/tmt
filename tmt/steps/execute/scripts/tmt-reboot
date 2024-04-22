@@ -1,14 +1,6 @@
 #!/bin/bash
-
-# Two-level reboot: `tmt-reboot` extracts command line arguments, and
-# calls `tmt-reboot-core` *while holding the tmt test pidfile lock!*
-# That should assure the pidfile would exist and contain valid info.
-
-[ -n "$TMT_DEBUG" ] && set -x
-
-TMT_TEST_PIDFILE_LOCK="${TMT_TEST_PIDFILE_LOCK:-/var/tmp/tmt-test.pid}"
-
 PATH=/sbin:/usr/sbin:$PATH
+
 
 command=""
 timeout=""
@@ -37,4 +29,6 @@ if [ $efi = True ]; then
     fi
 fi
 
-flock "$TMT_TEST_PIDFILE_LOCK" tmt-reboot-core "$command" "$timeout"
+json_fmt='{"command": "%s", "timeout": "%s"}'
+printf "$json_fmt" "$command" "$timeout" > "$TMT_REBOOT_REQUEST"
+kill $PPID

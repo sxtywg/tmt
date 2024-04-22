@@ -8,42 +8,6 @@ $id: /schemas/common
 $schema: https://json-schema.org/draft-07/schema
 
 definitions:
-  # context dimensions - the defined ones
-  arch:
-    type: string
-    enum:
-      - aarch64
-      - armhfp
-      - i386
-      - ppc64
-      - ppc64le
-      - s390x
-      - x86_64
-
-  distro:
-    type: string
-    patterns:
-      - ^fedora(-[0-9]+)?$
-      - ^centos(-stream)?(-[0-9]+(.[0-9]+)?)?$
-      - ^rhel(-[0-9]+(.[0-9]+)?)?$
-
-  trigger:
-    type: string
-    enum:
-      - build
-      - commit
-      - compose
-      - update
-
-  variant:
-    type: string
-    enum:
-      - Client
-      - Desktop
-      - Server
-      - Workstation
-      - Silverblue
-      - CoreOS
 
   # common definition of an ansible execution method
   ansible:
@@ -77,13 +41,17 @@ definitions:
     required:
       - how
 
-  # List of all available require types
-  # https://tmt.readthedocs.io/en/stable/spec/tests.html#require
-  require_type:
+  # list of all recognized architectures
+  arch:
     type: string
     enum:
-      - library
-      - file
+      - aarch64
+      - armhfp
+      - i386
+      - ppc64
+      - ppc64le
+      - s390x
+      - x86_64
 
   # helper for specifying array of strings
   array_of_strings:
@@ -119,43 +87,26 @@ definitions:
       nick:
         type: string
 
-      type:
-        $ref: "/schemas/common#/definitions/require_type"
-
-    required:
-      - type
-
     # This would have been the easy way, understandable by newer jsonschema
     # packages.
     # url: true
     # ref: true
     # path: true
     # name: true
-    # type: true
 
-  # https://tmt.readthedocs.io/en/stable/spec/plans.html#dist-git-source
+  # https://tmt.readthedocs.io/en/stable/spec/plans.html#fmf
+  # https://tmt.readthedocs.io/en/stable/spec/plans.html#shell
   dist-git-source:
     type: boolean
 
-  # https://tmt.readthedocs.io/en/stable/spec/plans.html#dist-git-source
+  # https://tmt.readthedocs.io/en/stable/spec/plans.html#fmf
+  # https://tmt.readthedocs.io/en/stable/spec/plans.html#shell
   dist-git-type:
     type: string
     enum:
       - centos
       - fedora
       - rhel
-
-  # https://tmt.readthedocs.io/en/stable/spec/plans.html#dist-git-source
-  dist-git-download-only:
-    type: boolean
-
-  # https://tmt.readthedocs.io/en/stable/spec/plans.html#dist-git-source
-  dist-git-install-builddeps:
-    type: boolean
-
-  # https://tmt.readthedocs.io/en/stable/spec/plans.html#dist-git-source
-  dist-git-require:
-    $ref: "/schemas/common#/definitions/one_or_more_strings"
 
   # https://tmt.readthedocs.io/en/stable/spec/tests.html#duration
   # https://tmt.readthedocs.io/en/stable/spec/plans.html#shell
@@ -173,56 +124,6 @@ definitions:
         - type: string
         - type: boolean
         - type: number
-
-  # https://tmt.readthedocs.io/en/stable/spec/plans.html#context
-  # https://tmt.readthedocs.io/en/stable/spec/context.html#spec-context
-  context:
-    type: object
-
-    additionalProperties:
-      $ref: "#/definitions/one_or_more_strings"
-
-    properties:
-      arch:
-        oneOf:
-          - $ref: "#/definitions/arch"
-
-          - type: array
-            items:
-              $ref: "#/definitions/arch"
-
-      component:
-        $ref: "#/definitions/one_or_more_strings"
-
-      collection:
-        $ref: "#/definitions/one_or_more_strings"
-
-      distro:
-        oneOf:
-          - $ref: "#/definitions/distro"
-
-          - type: array
-            items:
-              $ref: "#/definitions/distro"
-
-      module:
-        $ref: "#/definitions/one_or_more_strings"
-
-      trigger:
-        oneOf:
-          - $ref: "#/definitions/trigger"
-
-          - type: array
-            items:
-              $ref: "#/definitions/trigger"
-
-      variant:
-        oneOf:
-          - $ref: "#/definitions/variant"
-
-          - type: array
-            items:
-              $ref: "#/definitions/variant"
 
   # https://fmf.readthedocs.io/en/stable/concept.html#identifiers
   fmf_id:
@@ -280,22 +181,6 @@ definitions:
         type: string
         pattern: "^/"
 
-  require_file:
-    type: object
-    minProperties: 1
-    properties:
-      pattern:
-        anyOf:
-          - type: string
-          - $ref: "/schemas/common#/definitions/array_of_strings"
-
-      type:
-        $ref: "/schemas/common#/definitions/require_type"
-
-    required:
-      - type
-      - pattern
-
   # https://tmt.readthedocs.io/en/stable/spec/core.html#link
   # helper for one link
   link:
@@ -349,9 +234,6 @@ definitions:
       relates:
         $ref: "/schemas/common#/definitions/url_path_or_fmf_id"
 
-      test-script:
-        $ref: "/schemas/common#/definitions/url_path_or_fmf_id"
-
       note:
         type: string
 
@@ -382,8 +264,6 @@ definitions:
           - child
       - required:
           - relates
-      - required:
-          - test-script
 
   # helper for specifying an object with string properties
   object_with_string_properties:
@@ -477,28 +357,3 @@ definitions:
       - error
       - fail
       - custom
-
-  result_note:
-    type: string
-
-  result_log:
-    type: array
-    items:
-      type: string
-
-  timestamp:
-    type: string
-    # yamllint disable-line rule:line-length
-    pattern: "^\\d{2,}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+\\+\\d{2}:\\d{2}$"
-
-  check:
-    type: object
-    properties:
-      how:
-        type: string
-
-      enabled:
-        type: boolean
-
-    required:
-      - how

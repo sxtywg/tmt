@@ -1,50 +1,15 @@
-summary: |
-    Select or provision a guest with a given disk storage.
-
-description: |
-    .. code-block::
-
-       # A list of dictionaries, each describing one disk storage.
-       disk:
-           # Number or string, the amount of storage requested.
-           # Bytes are assumed when no unit is specified.
-         - size: 1234|">= 512 GiB"
-
-           # String, disk model requested.
-         - model-name: "well-known disk model"
-
-           # String, disk driver requested.
-         - driver: "well-known disk driver"
-
-    .. versionchanged:: 1.32
-       Added `driver` and `model-name` into specification.
-
+summary:
+    Choose the disk size
 example:
   - |
-    # Require a disk big enough for testing
+    # Disk group used to allow possible future extensions
     disk:
       - size: 500 GB
-
-  - |
-    # Require a disk with specified model
-    disk:
-      - model-name: 'PERC H310'
-
-  - |
-    # Require a disk with specified driver
-    disk:
-      - driver: mpt3sas
 
   - |
     # Multiple disks can be requested as well
     disk:
       - size: '>= 2 GB'
-      - model-name: 'PERC H310'
-      - driver: '~ sas.*'
-
+      - size: '>= 20 GB'
 link:
   - implemented-by: /tmt/steps/provision/artemis.py
-    note: "``size`` only"
-  - implemented-by: /tmt/steps/provision/mrack.py
-  - implemented-by: /tmt/steps/provision/testcloud.py
-    note: "``size`` only with ``=``, ``>=`` and ``<=`` operators only"

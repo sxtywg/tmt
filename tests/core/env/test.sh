@@ -9,9 +9,9 @@ rlJournalStart
     rlPhaseEnd
 
     rlPhaseStartTest "Check the TMT_DEBUG variable"
-        rlRun -s "TMT_DEBUG=3 tmt plan show"
+        rlRun -s "TMT_DEBUG=3 tmt plan show 2>&1 >/dev/null"
         rlAssertGrep "Using the 'DiscoverFmf' plugin" $rlRun_LOG
-        rlRun -s "TMT_DEBUG=weird tmt plan show" 2
+        rlRun -s "TMT_DEBUG=weird tmt plan show 2>&1 >/dev/null" 2
         rlAssertGrep "Invalid debug level" $rlRun_LOG
     rlPhaseEnd
 
@@ -57,7 +57,7 @@ rlJournalStart
         rlPhaseEnd
 
         rlPhaseStartTest "Empty environment file ($execute)"
-            rlRun -s "tmt run -r -e @empty.yaml"
+            rlRun -s "tmt run -r -e @empty.yaml 2>&1"
             rlAssertGrep "warn: Empty environment file" $rlRun_LOG
         rlPhaseEnd
     done

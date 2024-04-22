@@ -1,40 +1,32 @@
 import logging
-from typing import Optional
+from typing import List, Optional
 
-import _pytest.capture
 import _pytest.logging
+import click
 import pytest
 
-import tmt.utils
-from tmt.log import (
-    DebugLevelFilter,
-    Logger,
-    LogRecordDetails,
-    QuietnessFilter,
-    Topic,
-    TopicFilter,
-    VerbosityLevelFilter,
-    indent,
-    render_labels,
-    )
+from tmt.log import (DebugLevelFilter, Logger, QuietnessFilter,
+                     VerbosityLevelFilter, indent)
 
-from . import assert_log, assert_not_log
+from . import assert_log
 
 
 def _exercise_logger(
         caplog: _pytest.logging.LogCaptureFixture,
-        capsys: _pytest.capture.CaptureFixture[str],
         logger: Logger,
         indent_by: str = '',
-        labels: Optional[list[str]] = None,
-        reset: bool = True) -> None:
+        labels: Optional[List[str]] = None) -> None:
     labels = labels or []
 
-    prefix = tmt.utils.remove_color(render_labels(labels)) + indent_by + ' ' \
-        if labels else indent_by
+    if labels:
+        prefix = ''.join(
+            click.style(f'[{label}]', fg='cyan') for label in labels
+            ) + indent_by + ' '
 
-    if reset:
-        caplog.clear()
+    else:
+        prefix = indent_by
+
+    caplog.clear()
 
     logger.print('this is printed')
     logger.debug('this is a debug message')
@@ -43,15 +35,12 @@ def _exercise_logger(
     logger.warn('this is a warning')
     logger.fail('this is a failure')
 
-    captured = capsys.readouterr()
-
-    assert_not_log(
+    assert_log(
         caplog,
         message=f'{prefix}this is printed',
         details_key='this is printed',
         details_logger_labels=labels,
         levelno=logging.INFO)
-    assert tmt.utils.remove_color(captured.out) == f'{prefix}this is printed\n'
     assert_log(
         caplog,
         message=f'{prefix}this is a debug message',
@@ -72,25 +61,22 @@ def _exercise_logger(
         levelno=logging.INFO)
     assert_log(
         caplog,
-        message=f'{prefix}warn: this is a warning',
+        message=f'{prefix}{click.style("warn", fg="yellow")}: this is a warning',
         details_key='warn',
         details_value='this is a warning',
         details_logger_labels=labels,
         levelno=logging.WARN)
     assert_log(
         caplog,
-        message=f'{prefix}fail: this is a failure',
+        message=f'{prefix}{click.style("fail", fg="red")}: this is a failure',
         details_key='fail',
         details_value='this is a failure',
         details_logger_labels=labels,
         levelno=logging.ERROR)
 
 
-def test_sanity(
-        caplog: _pytest.logging.LogCaptureFixture,
-        capsys: _pytest.capture.CaptureFixture[str],
-        root_logger: Logger) -> None:
-    _exercise_logger(caplog, capsys, root_logger)
+def test_sanity(caplog: _pytest.logging.LogCaptureFixture, root_logger: Logger) -> None:
+    _exercise_logger(caplog, root_logger)
 
 
 def test_creation(caplog: _pytest.logging.LogCaptureFixture, root_logger: Logger) -> None:
@@ -102,13 +88,10 @@ def test_creation(caplog: _pytest.logging.LogCaptureFixture, root_logger: Logger
     assert logger._logger is actual_logger
 
 
-def test_descend(
-        caplog: _pytest.logging.LogCaptureFixture,
-        capsys: _pytest.capture.CaptureFixture[str],
-        root_logger: Logger) -> None:
+def test_descend(caplog: _pytest.logging.LogCaptureFixture, root_logger: Logger) -> None:
     deeper_logger = root_logger.descend().descend().descend()
 
-    _exercise_logger(caplog, capsys, deeper_logger, indent_by='            ')
+    _exercise_logger(caplog, deeper_logger, indent_by='            ')
 
 
 @pytest.mark.parametrize(
@@ -150,10 +133,10 @@ def test_verbosity_filter(
 
     assert filter.filter(logging.makeLogRecord({
         'levelno': logging.INFO,
-        'details': LogRecordDetails(
-            key='dummy key',
-            logger_verbosity_level=logger_verbosity,
-            message_verbosity_level=message_verbosity)
+        'details': {
+            'logger_verbosity_level': logger_verbosity,
+            'message_verbosity_level': message_verbosity
+            }
         })) == filter_outcome
 
 
@@ -196,10 +179,10 @@ def test_debug_filter(
 
     assert filter.filter(logging.makeLogRecord({
         'levelno': logging.DEBUG,
-        'details': LogRecordDetails(
-            key='dummy key',
-            logger_debug_level=logger_debug,
-            message_debug_level=message_debug)
+        'details': {
+            'logger_debug_level': logger_debug,
+            'message_debug_level': message_debug
+            }
         })) == filter_outcome
 
 
@@ -225,83 +208,44 @@ def test_quietness_filter(levelno: int, filter_outcome: int) -> None:
         })) == filter_outcome
 
 
-def test_labels(
-        caplog: _pytest.logging.LogCaptureFixture,
-        capsys: _pytest.capture.CaptureFixture[str],
-        root_logger: Logger) -> None:
-    _exercise_logger(caplog, capsys, root_logger, labels=[])
+def test_labels(caplog: _pytest.logging.LogCaptureFixture, root_logger: Logger) -> None:
+    _exercise_logger(caplog, root_logger, labels=[])
 
     root_logger.labels += ['foo']
 
-    _exercise_logger(caplog, capsys, root_logger, labels=['foo'])
+    _exercise_logger(caplog, root_logger, labels=['foo'])
 
     root_logger.labels += ['bar']
 
-    _exercise_logger(caplog, capsys, root_logger, labels=['foo', 'bar'])
+    _exercise_logger(caplog, root_logger, labels=['foo', 'bar'])
 
 
-def test_bootstrap_logger(
-        caplog: _pytest.logging.LogCaptureFixture,
-        capsys: _pytest.capture.CaptureFixture[str]) -> None:
-    _exercise_logger(caplog, capsys, Logger.get_bootstrap_logger())
-
-
-# Helpers for the test below, to make strings slightly shorter: Rendered Labels...
-RL = render_labels(["foo", "bar"])
-# ... and Rendered Labels with Padding.
-RLP = render_labels(["foo", "bar"]) + '   '
+def test_bootstrap_logger(caplog: _pytest.logging.LogCaptureFixture) -> None:
+    _exercise_logger(caplog, Logger.get_bootstrap_logger())
 
 
 @pytest.mark.parametrize(
-    ('key', 'value', 'color', 'level', 'labels', 'labels_padding', 'expected'),
+    ('key', 'value', 'color', 'level', 'labels', 'expected'),
     [
-        ('dummy-key', None, None, 0, None, 0, 'dummy-key'),
-        ('dummy-key', 'dummy-value', None, 0, None, 0, 'dummy-key: dummy-value'),
+        ('dummy-key', None, None, 0, None, 'dummy-key'),
+        ('dummy-key', 'dummy-value', None, 0, None, 'dummy-key: dummy-value'),
         (
             'dummy-key',
             'dummy\nmultiline\nvalue',
             None,
             0,
             None,
-            0,
             'dummy-key:\n    dummy\n    multiline\n    value'),
 
-        ('dummy-key', None, None, 2, None, 0, '        dummy-key'),
-        ('dummy-key', 'dummy-value', None, 2, None, 0, '        dummy-key: dummy-value'),
+        ('dummy-key', None, None, 2, None, '        dummy-key'),
+        ('dummy-key', 'dummy-value', None, 2, None, '        dummy-key: dummy-value'),
         (
             'dummy-key',
             'dummy\nmultiline\nvalue',
             None,
             2,
             None,
-            0,
-            '        dummy-key:\n'
-            '            dummy\n'
-            '            multiline\n'
-            '            value'),
-        (
-            'dummy-key',
-            'dummy\nmultiline\nvalue',
-            None,
-            2,
-            ['foo', 'bar'],
-            0,
-            f'{RL}         dummy-key:\n'
-            f'{RL}             dummy\n'
-            f'{RL}             multiline\n'
-            f'{RL}             value'),
-        (
-            'dummy-key',
-            'dummy\nmultiline\nvalue',
-            None,
-            2,
-            ['foo', 'bar'],
-            # Pad labels to occupy their actual length plus 3 more characters
-            len(RL) + 3,
-            f'{RLP}         dummy-key:\n'
-            f'{RLP}             dummy\n'
-            f'{RLP}             multiline\n'
-            f'{RLP}             value')
+            '        dummy-key:\n            dummy\n            multiline\n            value')
         ], ids=[
         'key only',
         'key and value',
@@ -309,68 +253,7 @@ RLP = render_labels(["foo", "bar"]) + '   '
         'key only, indented',
         'key and value, indented',
         'key and multiline value, indented',
-        'key and multiline value, indented, with labels',
-        'key and multiline value, indented, with labels, padded',
         ]
     )
-def test_indent(key, value, color, level, labels, labels_padding, expected):
-    assert indent(
-        key,
-        value=value,
-        color=color,
-        level=level,
-        labels=labels,
-        labels_padding=labels_padding) == expected
-
-
-@pytest.mark.parametrize(
-    ('logger_topics', 'message_topic', 'filter_outcome'),
-    [
-        # (
-        #     logger topics,
-        #     message topic,
-        #   expected outcome of `QietnessFilter.filter()`
-        # )
-        (
-            set(),
-            None,
-            True
-            ),
-        (
-            set(),
-            Topic.KEY_NORMALIZATION,
-            False
-            ),
-        (
-            {Topic.KEY_NORMALIZATION},
-            Topic.KEY_NORMALIZATION,
-            True
-            ),
-        (
-            {Topic.KEY_NORMALIZATION},
-            None,
-            True
-            ),
-        ],
-    ids=(
-        'no logger topics, no message topic',
-        'no logger topics, message has topic',
-        'message for enabled topic',
-        'logger topic, no message topic'
-        # TODO: enable once we have more than one topic
-        # 'message for disabled topic'
-        )
-    )
-def test_topic_filter(
-        logger_topics: set[Topic],
-        message_topic: Optional[Topic],
-        filter_outcome: bool) -> None:
-    filter = TopicFilter()
-
-    assert filter.filter(logging.makeLogRecord({
-        'levelno': logging.INFO,
-        'details': LogRecordDetails(
-            key='dummy key',
-            logger_topics=logger_topics,
-            message_topic=message_topic)
-        })) == filter_outcome
+def test_indent(key, value, color, level, labels, expected):
+    assert indent(key, value=value, color=color, level=level, labels=labels) == expected

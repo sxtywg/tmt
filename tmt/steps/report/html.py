@@ -1,15 +1,18 @@
 import dataclasses
 import webbrowser
 
+import jinja2
+import pkg_resources
+
 import tmt
-import tmt.log
 import tmt.options
 import tmt.steps
 import tmt.steps.report
 import tmt.utils
 from tmt.utils import Path, field
 
-HTML_TEMPLATE_PATH = tmt.utils.resource_files('steps/report/html/template.html.j2')
+HTML_TEMPLATE_PATH = pkg_resources.resource_filename(
+    'tmt', 'steps/report/html/template.html.j2')
 
 
 @dataclasses.dataclass
@@ -33,20 +36,17 @@ class ReportHtmlData(tmt.steps.report.ReportStepData):
         option='--display-guest',
         metavar='auto|always|never',
         choices=['auto', 'always', 'never'],
-        help="""
-             When to display full guest name in report: when more than a single guest was involved
-             (default), always, or never.
-             """)
+        help="When to display full guest name in report:"
+             " when more than a single guest was involved (default), always, or never."
+        )
 
 
 @tmt.steps.provides_method('html')
-class ReportHtml(tmt.steps.report.ReportPlugin[ReportHtmlData]):
+class ReportHtml(tmt.steps.report.ReportPlugin):
     """
-    Format test results into an HTML report.
+    Format test results into an html report
 
     Example config:
-
-    .. code-block:: yaml
 
         report:
             how: html
@@ -55,7 +55,7 @@ class ReportHtml(tmt.steps.report.ReportPlugin[ReportHtmlData]):
 
     _data_class = ReportHtmlData
 
-    def prune(self, logger: tmt.log.Logger) -> None:
+    def prune(self) -> None:
         """ Do not prune generated html report """
         pass
 
@@ -64,58 +64,54 @@ class ReportHtml(tmt.steps.report.ReportPlugin[ReportHtmlData]):
         super().go()
 
         # Prepare the template
-        environment = tmt.utils.default_template_environment()
+        environment = jinja2.Environment()
+        environment.filters["basename"] = lambda x: Path(x).name
 
-        if self.data.absolute_paths:
-            def _linkable_path(path: str) -> str:
-                return str(Path(path).absolute())
-
-            environment.filters["linkable_path"] = _linkable_path
+        if self.get('absolute-paths'):
+            environment.filters["linkable_path"] = lambda x: str(Path(x).absolute())
         else:
             # Links used in html should be relative to a workdir
-            def _linkable_path(path: str) -> str:
-                assert self.workdir is not None  # narrow type
+            assert self.workdir is not None  # narrow type
+            environment.filters["linkable_path"] = lambda x: str(Path(x).relative_to(self.workdir))
 
-                return str(Path(path).relative_to(self.workdir))
+        environment.trim_blocks = True
+        environment.lstrip_blocks = True
+        with open(HTML_TEMPLATE_PATH) as file:
+            template = environment.from_string(file.read())
 
-            environment.filters["linkable_path"] = _linkable_path
-
-        if self.data.display_guest == 'always':
+        if self.get('display-guest') == 'always':
             display_guest = True
 
-        elif self.data.display_guest == 'never':
+        elif self.get('display-guest') == 'never':
             display_guest = False
 
         else:
             seen_guests = {
                 result.guest.name
-                for result in self.step.plan.execute.results()
+                for result in self.step.plan.execute.results() if result.guest.name is not None
                 }
 
             display_guest = len(seen_guests) > 1
 
         # Write the report
         filename = Path('index.html')
-
         self.write(
             filename,
-            data=tmt.utils.render_template_file(
-                HTML_TEMPLATE_PATH,
-                environment,
+            data=template.render(
                 results=self.step.plan.execute.results(),
                 base_dir=self.step.plan.execute.workdir,
                 plan=self.step.plan,
                 display_guest=display_guest))
 
         # Nothing more to do in dry mode
-        if self.is_dry_run:
+        if self.opt('dry'):
             return
 
         # Show output file path
         assert self.workdir is not None
         target = self.workdir / filename
-        self.info("output", target, color='yellow')
-        if not self.data.open:
+        self.info("output", str(target), color='yellow')
+        if not self.get('open'):
             return
 
         # Open target in webbrowser

@@ -1,3 +1,5 @@
+# coding: utf-8
+
 """
 Metadata export functionality core.
 
@@ -6,36 +8,31 @@ export of tests, plans or stories.
 """
 
 import re
+import sys
 import traceback
 import types
 import xmlrpc.client
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ClassVar,
-    Generic,
-    Optional,
-    Protocol,
-    TypeVar,
-    Union,
-    cast,
-    )
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, Generic,
+                    List, Optional, Tuple, Type, TypeVar, Union, cast)
+
+if sys.version_info >= (3, 8):
+    from typing import Protocol
+else:
+    from typing_extensions import Protocol
 
 import fmf
 import fmf.utils
+import pkg_resources
 from click import echo, style
 
 import tmt
-import tmt.log
 import tmt.utils
-from tmt.plugins import PluginRegistry
 from tmt.utils import Path
 
 if TYPE_CHECKING:
     import tmt.base
 
-TEMPLATES_DIRECTORY = tmt.utils.resource_files('export/templates')
+TEMPLATES_DIRECTORY = Path(pkg_resources.resource_filename('tmt', 'export/templates'))
 
 bugzilla: Optional[types.ModuleType] = None
 
@@ -54,16 +51,16 @@ RE_BUGZILLA_URL = r'bugzilla.redhat.com/show_bug.cgi\?id=(\d+)'
 
 # ignore[type-arg]: bound type vars cannot be generic, and it would create a loop anyway.
 ExportableT = TypeVar('ExportableT', bound='Exportable')  # type: ignore[type-arg]
-ExportClass = type['ExportPlugin']
+ExportClass = Type['ExportPlugin']
 
-_RawExportedInstance = dict[str, Any]
-_RawExportedCollection = list[_RawExportedInstance]
+_RawExportedInstance = Dict[str, Any]
+_RawExportedCollection = List[_RawExportedInstance]
 _RawExported = Union[_RawExportedInstance, _RawExportedCollection]
 
 
 # Protocols describing export methods.
 class Exporter(Protocol):
-    def __call__(self, collection: list[ExportableT], keys: Optional[list[str]] = None) -> str:
+    def __call__(self, collection: List[ExportableT], keys: Optional[List[str]] = None) -> str:
         pass
 
 
@@ -72,9 +69,8 @@ class Exportable(Generic[ExportableT], tmt.utils._CommonBase):
 
     # Declare export plugin registry as a class variable, but do not initialize it. If initialized
     # here, the mapping would be shared by all classes, which is not a desirable attribute.
-    # Instead, mapping will be created by get_export_plugin_registry() method when called for the
-    # first time.
-    _export_plugin_registry: ClassVar[PluginRegistry[ExportClass]]
+    # Instead, mapping will be created by provides_*_export decorators.
+    _export_plugin_registry: ClassVar[Dict[str, ExportClass]]
 
     # Keep this method around, to correctly support Python's method resolution order.
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -82,11 +78,11 @@ class Exportable(Generic[ExportableT], tmt.utils._CommonBase):
 
     # Cannot use @property as this must remain classmethod
     @classmethod
-    def get_export_plugin_registry(cls) -> PluginRegistry[ExportClass]:
+    def get_export_plugin_registry(cls) -> Dict[str, ExportClass]:
         """ Return - or initialize - export plugin registry """
 
         if not hasattr(cls, '_export_plugin_registry'):
-            cls._export_plugin_registry = PluginRegistry()
+            cls._export_plugin_registry = {}
 
         return cls._export_plugin_registry
 
@@ -99,10 +95,7 @@ class Exportable(Generic[ExportableT], tmt.utils._CommonBase):
         """
 
         def _provides_export(export_cls: ExportClass) -> ExportClass:
-            cls.get_export_plugin_registry().register_plugin(
-                plugin_id=format,
-                plugin=export_cls,
-                logger=tmt.log.Logger.get_bootstrap_logger())
+            cls.get_export_plugin_registry()[format] = export_cls
 
             return export_cls
 
@@ -123,7 +116,7 @@ class Exportable(Generic[ExportableT], tmt.utils._CommonBase):
             format.
         """
 
-        exporter_class = cls.get_export_plugin_registry().get_plugin(format)
+        exporter_class = cls.get_export_plugin_registry().get(format, None)
 
         if exporter_class is None:
             raise tmt.utils.GeneralError(
@@ -132,7 +125,7 @@ class Exportable(Generic[ExportableT], tmt.utils._CommonBase):
         return cast(Exporter, getattr(
             exporter_class, f'export_{cls.__name__.lower()}_collection'))
 
-    def _export(self, *, keys: Optional[list[str]] = None) -> _RawExportedInstance:
+    def _export(self, *, keys: Optional[List[str]] = None) -> _RawExportedInstance:
         """
         Export instance as "raw" dictionary.
 
@@ -140,9 +133,9 @@ class Exportable(Generic[ExportableT], tmt.utils._CommonBase):
         position.
         """
 
-        raise NotImplementedError
+        raise NotImplementedError()
 
-    def export(self, *, format: str, keys: Optional[list[str]] = None, **kwargs: Any) -> str:
+    def export(self, *, format: str, keys: Optional[List[str]] = None, **kwargs: Any) -> str:
         """ Export this instance in a given format """
 
         return self.export_collection(
@@ -157,11 +150,11 @@ class Exportable(Generic[ExportableT], tmt.utils._CommonBase):
 
     @classmethod
     def export_collection(
-            cls: type[ExportableT],
+            cls: Type[ExportableT],
             *,
-            collection: list[ExportableT],
+            collection: List[ExportableT],
             format: str,
-            keys: Optional[list[str]] = None,
+            keys: Optional[List[str]] = None,
             **kwargs: Any) -> str:
         """ Export collection of instances in a given format """
 
@@ -179,105 +172,33 @@ class ExportPlugin:
     """ Base class for plugins providing metadata export functionality """
 
     @classmethod
-    def export_fmfid_collection(cls, fmf_ids: list['tmt.base.FmfId'], **kwargs: Any) -> str:
+    def export_fmfid_collection(cls, fmf_ids: List['tmt.base.FmfId'], **kwargs: Any) -> str:
         """ Export collection of fmf ids """
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @classmethod
     def export_test_collection(cls,
-                               tests: list['tmt.base.Test'],
-                               keys: Optional[list[str]] = None,
+                               tests: List['tmt.base.Test'],
+                               keys: Optional[List[str]] = None,
                                **kwargs: Any) -> str:
         """ Export collection of tests """
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @classmethod
     def export_plan_collection(cls,
-                               plans: list['tmt.base.Plan'],
-                               keys: Optional[list[str]] = None,
+                               plans: List['tmt.base.Plan'],
+                               keys: Optional[List[str]] = None,
                                **kwargs: Any) -> str:
         """ Export collection of plans """
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @classmethod
     def export_story_collection(cls,
-                                stories: list['tmt.base.Story'],
-                                keys: Optional[list[str]] = None,
+                                stories: List['tmt.base.Story'],
+                                keys: Optional[List[str]] = None,
                                 **kwargs: Any) -> str:
         """ Export collection of stories """
-        raise NotImplementedError
-
-# It's tempting to make this the default implementation of `ExporterPlugin` class,
-# but that would mean the `ExportPlugin` would suddenly not raise `NotImplementedError`
-# in methods where the export is not supported by a child class. That does not
-# feel right, therefore the "simple export plugin" class of plugins has its own
-# dedicated base.
-
-
-class TrivialExporter(ExportPlugin):
-    """
-    A helper base class for exporters with trivial export procedure.
-
-    Child classes need to implement a single method that performs a conversion
-    of a single collection item, and that's all. It is good enough for formats
-    like ``dict`` or ``YAML`` as they do not require any other input than the
-    data to convert.
-    """
-
-    @classmethod
-    def _export(cls, data: _RawExported) -> str:
-        """
-        Perform the actual conversion of internal data package to desired format.
-
-        The method is left for child classes to implement, all other public
-        methods call this method to perform the conversion for each collection
-        item.
-
-        :param data: data package to export.
-        :returns: string representation of the given data.
-        """
-
-        raise NotImplementedError
-
-    @classmethod
-    def export_fmfid_collection(cls,
-                                fmf_ids: list['tmt.base.FmfId'],
-                                keys: Optional[list[str]] = None,
-                                **kwargs: Any) -> str:
-        # Special case: fmf id export shall not display `ref` if it is equal
-        # to the default branch.
-        exported_fmf_ids: list[tmt.base._RawFmfId] = []
-
-        for fmf_id in fmf_ids:
-            exported = fmf_id._export(keys=keys)
-
-            if fmf_id.default_branch and fmf_id.ref == fmf_id.default_branch:
-                exported.pop('ref')
-
-            exported_fmf_ids.append(cast(tmt.base._RawFmfId, exported))
-
-        return cls._export(cast(list[_RawExportedInstance], exported_fmf_ids))
-
-    @classmethod
-    def export_test_collection(cls,
-                               tests: list['tmt.base.Test'],
-                               keys: Optional[list[str]] = None,
-                               **kwargs: Any) -> str:
-        return cls._export([test._export(keys=keys) for test in tests])
-
-    @classmethod
-    def export_plan_collection(cls,
-                               plans: list['tmt.base.Plan'],
-                               keys: Optional[list[str]] = None,
-                               **kwargs: Any) -> str:
-        return cls._export([plan._export(keys=keys) for plan in plans])
-
-    @classmethod
-    def export_story_collection(cls,
-                                stories: list['tmt.base.Story'],
-                                keys: Optional[list[str]] = None,
-                                **kwargs: Any) -> str:
-        return cls._export([story._export(keys=keys) for story in stories])
+        raise NotImplementedError()
 
 
 def get_bz_instance() -> BugzillaInstance:
@@ -286,7 +207,7 @@ def get_bz_instance() -> BugzillaInstance:
         import bugzilla
     except ImportError:
         raise tmt.utils.ConvertError(
-            "Install 'tmt+test-convert' to link test to the bugzilla.")
+            "Install 'tmt-test-convert' to link test to the bugzilla.")
 
     try:
         bz_instance: BugzillaInstance = bugzilla.Bugzilla(url=BUGZILLA_XMLRPC_URL)
@@ -301,7 +222,7 @@ def get_bz_instance() -> BugzillaInstance:
     return bz_instance
 
 
-def bz_set_coverage(bug_ids: list[int], case_id: str, tracker_id: int) -> None:
+def bz_set_coverage(bug_ids: List[int], case_id: str, tracker_id: int) -> None:
     """ Set coverage in Bugzilla """
     bz_instance = get_bz_instance()
 
@@ -360,7 +281,7 @@ def bz_set_coverage(bug_ids: list[int], case_id: str, tracker_id: int) -> None:
         " ".join([f"BZ#{bz_id}" for bz_id in bug_ids])), fg='magenta'))
 
 
-def check_md_file_respects_spec(md_path: Path) -> list[str]:
+def check_md_file_respects_spec(md_path: Path) -> List[str]:
     """
     Check that the file respects manual test specification
 
@@ -368,6 +289,7 @@ def check_md_file_respects_spec(md_path: Path) -> list[str]:
     """
     import tmt.base
     warnings_list = []
+    # TODO: remove cast lastr
     sections_headings = tmt.base.SECTIONS_HEADINGS
     required_headings = set(sections_headings['Step'] +
                             sections_headings['Expect'])
@@ -419,16 +341,17 @@ def check_md_file_respects_spec(md_path: Path) -> list[str]:
                                'section "{}"'
 
     def required_section_exists(
-            section: list[str],
+            section: List[str],
             section_name: str,
-            prefix: Union[str, tuple[str, ...]]) -> int:
+            prefix: Union[str, Tuple[str, ...]]) -> int:
         res = list(filter(
             lambda t: t.startswith(prefix), section))
         if not res:
             warnings_list.append(
                 warn_required_section_is_absent.format(section_name))
             return 0
-        return len(res)
+        else:
+            return len(res)
 
     # Required sections don't exist
     if not required_section_exists(html_headings_from_file,
